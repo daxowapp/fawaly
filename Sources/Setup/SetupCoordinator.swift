@@ -15,6 +15,7 @@ final class SetupCoordinator: ObservableObject {
         var verify: @Sendable (EngineAgent) async throws -> Bool
         var signOut: @Sendable (EngineAgent) async throws -> Void
         var integrate: @Sendable (EngineAgent) async throws -> Void = { _ in }
+        var apiReady: @Sendable (EngineAgent) -> Bool = { _ in false }
 
         static func live(root: URL) -> Self {
             let service = NativeSignIn(configuration: EngineConfiguration(root: root))
@@ -26,13 +27,13 @@ final class SetupCoordinator: ObservableObject {
                         integrate: { primary in
                             guard let executable = Bundle.main.executableURL else { throw FawalyError.invalid("The Fawaly application could not be located.") }
                             try await ClientLink(root: root, application: executable).connect(primary)
-                        })
+                        }, apiReady: { EngineConfiguration(root: root).isReady($0) })
         }
     }
 
     @Published var step = Step.welcome
     @Published var editingTeam = false
-    @Published var selected = Set(EngineAgent.allCases)
+    @Published var selected = Set(EngineAgent.nativeAgents)
     @Published var team = TeamSettings()
     @Published var advisorMode = AdvisorMode.important
     @Published var kimiRegion = KimiRegion.global
@@ -57,6 +58,7 @@ final class SetupCoordinator: ObservableObject {
     func scan() {
         guard !busy else { return }
         for agent in EngineAgent.allCases {
+            if !agent.isNative { phases[agent] = dependencies.apiReady(agent) ? .connected : .missing; continue }
             if dependencies.executable(agent) == nil { phases[agent] = .missing }
             else if phases[agent] != .connected { phases[agent] = .available }
         }
@@ -68,7 +70,7 @@ final class SetupCoordinator: ObservableObject {
         operation = Task { [weak self] in
             guard let self else { return }
             defer { finishOperation() }
-            for agent in EngineAgent.allCases where selected.contains(agent) {
+            for agent in EngineAgent.nativeAgents where selected.contains(agent) {
                 activeAgent = agent
                 do {
                     if dependencies.executable(agent) == nil {
@@ -125,7 +127,7 @@ final class SetupCoordinator: ObservableObject {
         operation = Task { [weak self] in
             guard let self else { return }
             defer { finishOperation() }
-            for agent in EngineAgent.allCases where dependencies.executable(agent) != nil {
+            for agent in EngineAgent.nativeAgents where dependencies.executable(agent) != nil {
                 activeAgent = agent
                 phases[agent] = .verifying
                 do { phases[agent] = try await dependencies.verify(agent) ? .connected : .available }
@@ -178,7 +180,7 @@ final class SetupCoordinator: ObservableObject {
     private func begin() { busy = true; browserURL = nil }
     private func finishOperation() { busy = false; activeAgent = nil; operation = nil; browserURL = nil }
     private func scanAfterCancellation() {
-        for agent in EngineAgent.allCases where phases[agent] != .connected {
+        for agent in EngineAgent.nativeAgents where phases[agent] != .connected {
             phases[agent] = dependencies.executable(agent) == nil ? .missing : .available
         }
     }

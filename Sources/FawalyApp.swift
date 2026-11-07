@@ -15,6 +15,7 @@ enum FawalyEntry {
 }
 
 struct FawalyApp: App {
+    @NSApplicationDelegateAdaptor(WorkshopLifecycle.self) private var lifecycle
     @StateObject private var model: AppModel
 
     init() {
@@ -34,17 +35,23 @@ struct FawalyApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("الفواعلي · Fawaly Rebuilt") {
+        Window("الفواعلي · Fawaly", id: "workshop") {
             WorkshopWindow()
                 .environmentObject(model)
                 .frame(minWidth: 830, minHeight: 620)
         }
         .defaultSize(width: 1060, height: 760)
+        .commands { WorkshopWindowCommands(model: model) }
+        MenuBarExtra("الفواعلي", systemImage: "hammer.fill") {
+            WorkshopMenu().environmentObject(model)
+        }
+
     }
 }
 
 struct WorkshopWindow: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.openWindow) private var openWindow
     @State private var page: AppPage? = .home
 
     var body: some View {
@@ -56,7 +63,7 @@ struct WorkshopWindow: View {
                         Text(model.text("الفواعلي", "Fawaly")).font(Workshop.heading(26, ar: model.arabic))
                     }
                     Spacer()
-                    Button(model.arabic ? "EN" : "عربي") { model.setArabic(!model.arabic) }.buttonStyle(.plain)
+                    Button(model.arabic ? "EN" : "عربي") { model.setArabic(!model.arabic) }.buttonStyle(.plain).accessibilityLabel(model.arabic ? "English" : "العربية")
                     Button { model.refreshTeamActivity() } label: { Image(systemName: "arrow.clockwise") }
                         .buttonStyle(.plain).accessibilityLabel(model.text("تحديث النشاط", "Refresh activity"))
                 }.padding(.horizontal, 24).padding(.top, 12)
@@ -83,7 +90,7 @@ struct WorkshopWindow: View {
                                 }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
                                     .background(page == item ? Workshop.yellow.opacity(0.23) : .clear, in: RoundedRectangle(cornerRadius: 12))
                                     .contentShape(Rectangle())
-                            }.buttonStyle(.plain).accessibilityAddTraits(page == item ? .isSelected : [])
+                            }.buttonStyle(.plain).accessibilityLabel(item.title(model.arabic)).accessibilityAddTraits(page == item ? .isSelected : [])
                         }
                     }.padding(.horizontal, 10)
                 }
@@ -127,11 +134,17 @@ struct WorkshopWindow: View {
             }
         }
         .task {
-            while !Task.isCancelled {
-                do { try await Task.sleep(for: .seconds(3)) } catch { return }
-                model.refreshTeamActivity()
-                await model.checkAccountsIfDue()
-            }
+            WorkshopLifecycle.model = model
+            WorkshopLifecycle.showWorkshop = { openWindow(id: "workshop") }
+            model.startMonitoring()
+        }
+        .onChange(of: model.requestedPage) { _, requested in
+            if let requested { page = requested; model.requestedPage = nil }
+        }
+        .confirmationDialog(model.text("إنهاء الفواعلي؟", "Quit Fawaly?"), isPresented: $model.confirmQuit) {
+            Button(model.text("إنهاء وإيقاف المهام التابعة للتطبيق", "Quit and stop app-owned work"), role: .destructive) { WorkshopLifecycle.allowQuitOnce = true; NSApp.terminate(nil) }
+        } message: {
+            Text(model.text("فيه شغل لسه شغّال. المهام التابعة للواجهة هتتوقف وقد تترك تعديلات جزئية تحتاج مراجعة. مهام MCP في برنامج الأساسي منفصلة.", "Work is still active. App-owned work will stop and may leave partial edits to review. MCP jobs in your primary client run separately."))
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in LoginProcess.cancelAll(); WorkerProcess.cancelAll() }
         .tint(Workshop.yellow)

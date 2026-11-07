@@ -65,6 +65,7 @@ struct NativeSignIn: Sendable {
             let data = Data(result.output.utf8)
             let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             connected = result.exitCode == 0 && object?["loggedIn"] as? Bool == true
+        default: throw FawalyError.invalid("Configure API assistants from the app’s API services section.")
         }
         try configuration.recordNativeSignIn(agent, connected: connected)
         return connected

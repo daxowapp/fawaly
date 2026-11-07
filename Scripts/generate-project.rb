@@ -72,8 +72,10 @@ project_config = config.call('project',
 app_settings = {
   'PRODUCT_NAME' => 'Fawaly Rebuilt', 'PRODUCT_MODULE_NAME' => 'FawalyApp',
   'ENABLE_DEBUG_DYLIB' => 'NO',
-  'PRODUCT_BUNDLE_IDENTIFIER' => 'com.daxow.fawaly.rebuilt', 'MARKETING_VERSION' => '0.6.1',
-  'CURRENT_PROJECT_VERSION' => '8', 'INFOPLIST_KEY_CFBundleDisplayName' => 'Fawaly Rebuilt',
+  'PRODUCT_BUNDLE_IDENTIFIER' => 'com.daxow.fawaly.rebuilt', 'MARKETING_VERSION' => '0.7.0',
+  'CURRENT_PROJECT_VERSION' => '9', 'INFOPLIST_KEY_CFBundleDisplayName' => 'Fawaly',
+  'ENABLE_HARDENED_RUNTIME' => 'YES',
+  'GENERATE_INFOPLIST_FILE' => 'NO', 'INFOPLIST_FILE' => 'Config/Fawaly-Info.plist',
   'INFOPLIST_KEY_CFBundleIconFile' => 'Fawaly.icns', 'INFOPLIST_KEY_LSApplicationCategoryType' => 'public.app-category.productivity',
   'OTHER_LDFLAGS' => ['$(inherited)', '-lsqlite3'],
   'LD_RUNPATH_SEARCH_PATHS' => ['$(inherited)', '@executable_path/../Frameworks']
@@ -87,9 +89,18 @@ test_settings = {
 app_configs = config.call('app', app_settings, app_settings)
 test_configs = config.call('test', test_settings, test_settings)
 
+sparkle_package = add.call('package:sparkle', 'XCRemoteSwiftPackageReference',
+                           'repositoryURL' => 'https://github.com/sparkle-project/Sparkle',
+                           'requirement' => { 'kind' => 'exactVersion', 'version' => '2.10.1' })
+sparkle_product = add.call('product:sparkle', 'XCSwiftPackageProductDependency',
+                           'package' => sparkle_package, 'productName' => 'Sparkle')
+sparkle_link = add.call('build:sparkle-link', 'PBXBuildFile', 'productRef' => sparkle_product)
+sparkle_frameworks = add.call('phase:app-frameworks', 'PBXFrameworksBuildPhase',
+                              'buildActionMask' => 2147483647, 'files' => [sparkle_link], 'runOnlyForDeploymentPostprocessing' => 0)
+
 app_phases = [
   phase.call('app-sources', 'PBXSourcesBuildPhase', swift_refs),
-  phase.call('app-frameworks', 'PBXFrameworksBuildPhase', []),
+  sparkle_frameworks,
   phase.call('app-resources', 'PBXResourcesBuildPhase', resource_refs)
 ]
 test_phases = [phase.call('test-sources', 'PBXSourcesBuildPhase', test_refs), phase.call('test-frameworks', 'PBXFrameworksBuildPhase', [])]
@@ -99,6 +110,7 @@ dependency = add.call('app-dependency', 'PBXTargetDependency', 'target' => app_i
 add.call('target:app', 'PBXNativeTarget',
          'buildConfigurationList' => app_configs, 'buildPhases' => app_phases, 'buildRules' => [], 'dependencies' => [],
          'name' => 'Fawaly Rebuilt', 'productName' => 'Fawaly Rebuilt', 'productReference' => app_product,
+         'packageProductDependencies' => [sparkle_product],
          'productType' => 'com.apple.product-type.application')
 add.call('target:test', 'PBXNativeTarget',
          'buildConfigurationList' => test_configs, 'buildPhases' => test_phases, 'buildRules' => [], 'dependencies' => [dependency],
@@ -109,7 +121,7 @@ add.call('project', 'PBXProject',
          'buildConfigurationList' => project_config, 'compatibilityVersion' => 'Xcode 14.0',
          'developmentRegion' => 'en', 'hasScannedForEncodings' => 0, 'knownRegions' => ['en', 'Base'],
          'mainGroup' => main_group, 'productRefGroup' => groups.fetch('Products'), 'projectDirPath' => '',
-         'projectRoot' => '', 'targets' => [app_id, test_id])
+         'projectRoot' => '', 'targets' => [app_id, test_id], 'packageReferences' => [sparkle_package])
 project = 'Fawaly Rebuilt.xcodeproj'
 FileUtils.mkdir_p("#{project}/xcshareddata/xcschemes")
 File.write("#{project}/project.pbxproj", "// !$*UTF8*$!\n" + serialize({

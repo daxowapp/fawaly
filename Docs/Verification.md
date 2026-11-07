@@ -1,5 +1,19 @@
 # Verification and current limits
 
+## 0.7.0 local acceptance — 2026-11-07
+
+The expanded app-hosted suite passed **113 tests** on this Mac, including the real macOS Keychain roundtrip with disposable fixture values, endpoint scoping, local caps, both API message formats, bounded file tools, case/format variants of Git metadata, coordinated stale-write rejection, preference revision/CAS behavior, update configuration and external-worker/comparison exclusion. Test items were removed from Keychain afterward. The local app is a universal arm64/x86_64 development preview in the user's Applications folder; production packaging enforces Developer ID and hardened runtime separately.
+
+Native UI setup was exercised after moving the app: both Codex and Claude user connections migrated to the stable private launcher, and role switching succeeded. The saved team was restored to Codex primary, Claude advisor and Kimi worker. All three saved native accounts were available. The project grant was preserved. Claude's local Code tab shares its user-scope MCP settings; same-name Desktop overrides are checked separately, migrating only an owned Fawaly entry and preserving unrelated settings. See the [official Desktop configuration reference](https://code.claude.com/docs/en/desktop#shared-configuration).
+
+A loopback HTTP fixture was configured through the normal API sheet without credentials. It replayed a real `write_file` request through URLSession and the installed MCP engine, wrote the exact expected bytes in the approved project, reported the configured model/local-endpoint billing, and required primary review. The host independently read the file and recorded that review. A delayed fixture triggered the native quit confirmation; cancelling the quit let it finish. The model list was fetched through the UI. A local cap entered using Arabic digits was saved without a generation request, and a later MCP request was rejected with the fixture's HTTP POST count unchanged. This was a transport/tool acceptance fixture, **not** a real Ollama or new cloud-provider model test. The fixture profile was removed and the original team retained.
+
+Preference sync was selected using the native folder picker. A simulated second-device revision appeared for review while the current language stayed unchanged. Explicit approval applied English/light appearance without changing roles or the project grant; the incoming revision did not echo as a new publication. Sync was then disabled and Arabic/system appearance restored. The document contained only allowlisted preference fields. This does not establish live propagation between two physical Macs.
+
+A fresh native Codex preflight, restricted to Fawaly team tools, autonomously read the roster, consulted Claude, delegated a short claim audit to Kimi, compared their actual replies with host evidence, and recorded its own decision/review. It approved preview source publication and rejected a public installer claim. The earlier Kimi sync implementation timed out after writing partial files: the primary repaired and integrated them, independently verified the result, and accepted the contribution with that limitation recorded. A large Claude review also timed out; a narrower completed review found concrete issues that were fixed. Timeouts are not counted as successful reviews.
+
+The recovery preview refuses self-updates. The release packager stops before building when no valid Developer ID Application identity exists. Real notarization, Gatekeeper acceptance on another Mac and signed update installation remain required. See [Distribution.md](Distribution.md). Notification permission and launch-at-login registration remained off in the owner's saved preferences. The original recovered folders were checked against the earlier 70-file checksum manifest with **zero changes**.
+
 ## Local verification — 2026-11-07
 
 - App-hosted Xcode test suite: **88 tests passed**, no test exclusions. macOS, Xcode 27.2, arm64.
@@ -32,7 +46,7 @@ Native vendor authorization and the small real model requests were explicitly ap
 
 ## Still missing or limited
 
-- Complete feature parity with the lost repository, archived API/local adapters, official provider quota and spending caps, automatic metered routing/fallback, automatic live model discovery, automatic iCloud sync, and the previous distribution/update/widget/menu-bar architecture.
+- Complete historical/widget/App Store parity, official subscription quota and dollar spending caps. Additional API/local adapters, local request caps, compatible model listing, preference-folder sync, menu bar/background lifecycle and signed-update infrastructure now exist, with the verification limits above. No automatic paid fallback is provided.
 - Production Apple signing, notarization, App Store submission, and a public consumer installer.
 - Live verification of OS notification permission, two-Mac preferences transfer, and every provider account region/tier.
 - A model can ignore instructions. Fawaly records primary review evidence but does not independently prove that a model inspected every change.

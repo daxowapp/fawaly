@@ -4,7 +4,10 @@ struct EngineServicesCard: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        EngineConnections(setup: model.setup)
+        VStack(spacing: 16) {
+            EngineConnections(setup: model.setup)
+            APIServicesView()
+        }
     }
 }
 
@@ -16,7 +19,7 @@ private struct EngineConnections: View {
         WorkshopCard {
             VStack(alignment: .leading, spacing: 15) {
                 Text(model.text("حساباتك", "Your accounts")).font(.headline)
-                ConnectionList(setup: setup, agents: EngineAgent.allCases)
+                ConnectionList(setup: setup, agents: EngineAgent.nativeAgents)
                 HStack {
                     Button(model.text("افتح الإعداد", "Open setup")) { model.restartOnboarding() }.disabled(setup.busy)
                     Button(model.text("تحقق من الربط", "Check connections")) { setup.verifyConnections() }.disabled(setup.busy)

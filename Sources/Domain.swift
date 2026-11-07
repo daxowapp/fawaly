@@ -3,6 +3,7 @@ import SQLite3
 
 public enum Rater: String, Codable, Sendable, CaseIterable {
     case claude, codex, kimi, human
+    case zai, minimax, deepseek, anthropicAPI, openAIAPI, ollama, lmstudio
 }
 
 public enum AdvisorMode: String, Codable, Sendable, CaseIterable {

@@ -57,11 +57,11 @@ enum WorkshopNotifications {
     static func authorize() async throws -> Bool {
         try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
     }
-    static func completed(agent: EngineAgent, needsReview: Bool, arabic: Bool) async {
+    static func completed(agent: EngineAgent, needsReview: Bool, failed: Bool = false, arabic: Bool) async {
         let content = UNMutableNotificationContent()
         content.title = arabic ? "الفواعلي" : "Fawaly"
         // Keep task text and source paths out of lock-screen notifications.
-        content.body = agent.label + (arabic ? (needsReview ? " خلص — افتح الورشة للمراجعة." : " خلص المهمة. افتح الورشة للنتيجة.") : (needsReview ? " finished — open Fawaly to review." : " finished — open Fawaly for the result."))
+        content.body = failed ? agent.label + (arabic ? " اتوقفت مهمته — افتح الورشة للتفاصيل." : " task stopped — open Fawaly for details.") : agent.label + (arabic ? (needsReview ? " خلص — افتح الورشة للمراجعة." : " خلص المهمة. افتح الورشة للنتيجة.") : (needsReview ? " finished — open Fawaly to review." : " finished — open Fawaly for the result."))
         try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
     }
 }

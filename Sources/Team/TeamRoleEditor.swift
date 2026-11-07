@@ -4,6 +4,11 @@ struct TeamRoleEditor: View {
     @EnvironmentObject private var model: AppModel
     @Binding var team: TeamSettings
     @Binding var advisorMode: AdvisorMode
+    private var selectable: [EngineAgent] {
+        let configured = (try? APIAssistantStore(root: model.dataDirectory).all().map(\.agent)) ?? []
+        let assigned = model.state.team?.supporters ?? []
+        return EngineAgent.nativeAgents + EngineAgent.allCases.filter { !$0.isNative && (configured.contains($0) || assigned.contains($0)) }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -18,7 +23,7 @@ struct TeamRoleEditor: View {
                 team.workers.removeAll { $0 == value }
             })) {
                 Text(model.text("من غير مستشار حاليًا", "No advisor for now")).tag(Optional<EngineAgent>.none)
-                ForEach(EngineAgent.allCases.filter { $0 != team.primary }, id: \.self) { Text($0.label).tag(Optional($0)) }
+                ForEach(selectable.filter { $0 != team.primary }, id: \.self) { Text($0.label).tag(Optional($0)) }
             }
             if team.advisor != nil {
                 Picker(model.text("المستشار يتدخل", "Advisor involvement"), selection: $advisorMode) {
@@ -29,7 +34,7 @@ struct TeamRoleEditor: View {
             }
             VStack(alignment: .leading, spacing: 8) {
                 Text(model.text("الفواعلي", "Workers")).font(.headline)
-                let available = EngineAgent.allCases.filter { $0 != team.primary && $0 != team.advisor }
+                let available = selectable.filter { $0 != team.primary && $0 != team.advisor }
                 if available.isEmpty {
                     Text(model.text("فريقك الحالي أساسي ومستشار. تقدر تغيّر الأدوار في أي وقت.", "Your current team has a primary and an advisor. You can change roles at any time.")).font(.callout).foregroundStyle(.secondary)
                 }

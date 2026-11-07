@@ -14,12 +14,12 @@ Reference: [original home](Original-0.4.1-Home.png). Current screenshots are in 
 | Stop/live state/partial output | Implemented; partial file edits remain reviewable |
 | Git comparison snapshots and winner selection | Implemented in isolated Git HEAD exports; no automatic merge |
 | Native supporting accounts | Codex, Claude Code, Kimi Code; real owner-authorized requests checked |
-| Other old provider adapters | Not restored; signed catalog is reference metadata only |
-| Official usage/quota and spending caps | Not implemented; local activity is labelled separately |
+| Other old provider adapters | API/local adapters implemented with fixture coverage; live cloud accounts require their own keys |
+| Official usage/quota and spending caps | Local API request caps and reported tokens implemented; official subscription quotas/dollar caps unavailable |
 | Assistant model selection | Explicit local lists/aliases; no automatic live discovery or primary-model switching |
 | Preferences, notifications, morning checks | Implemented; notifications and morning checks require app to remain open; OS notification flow not live-tested |
-| iCloud synchronization | Manual preferences export/import; no automatic sync |
+| iCloud synchronization | User-picked folder sync, revision protection and incoming approval; live two-Mac propagation not claimed |
 | Signed catalog | Signature verification, rollback date ordering and verified bundled fallback implemented |
-| Historical menu bar/widget/updater/store distribution | Not restored as a complete release architecture |
+| Historical menu bar/widget/updater/store distribution | Menu bar/background/launch-at-login and signed updater/packaging implemented; Apple signing/notarization and old widget/Store parity remain |
 
 Original behavior is a design reference, not proof of recovered source or full parity. See [Verification.md](Verification.md) for actual checks and remaining limitations.

@@ -9,6 +9,8 @@ struct WorkshopSettingsPage: View {
     @State private var pendingBackup: PreferencesBackup?
     @State private var feedback: String?
     @State private var catalog: SignedCatalog?
+    @State private var launchAtLogin = WorkshopLoginItem.enabled
+    @State private var showLicenses = false
     private var preferences: WorkshopPreferences { model.state.preferences ?? WorkshopPreferences() }
 
     var body: some View {
@@ -32,7 +34,13 @@ struct WorkshopSettingsPage: View {
                             ForEach(0..<24) { hour in Text(String(format: "%02d:00", hour)).tag(hour) }
                         }
                     }
-                    Text(model.text("الفحص والتنبيهات بيشتغلوا والواجهة مفتوحة. فحص الحساب محلي، ومش بيبعت مهمة للموديل.", "Checks and notifications run while Fawaly is open. Account checks inspect saved sign-in and do not send a model task.")).font(.caption).foregroundStyle(.secondary)
+                    Toggle(model.text("افتح الفواعلي مع تسجيل الدخول للماك", "Open Fawaly when I log in to my Mac"), isOn: Binding(get: { launchAtLogin }, set: { enabled in
+                        do { try WorkshopLoginItem.setEnabled(enabled); launchAtLogin = WorkshopLoginItem.enabled } catch { model.report(error) }
+                    }))
+                    if WorkshopLoginItem.needsApproval {
+                        Button(model.text("وافق من إعدادات تسجيل الدخول", "Approve in Login Items settings")) { WorkshopLoginItem.openSettings() }
+                    }
+                    Text(model.text("اقفل نافذة الورشة وسيب الفواعلي شغّال من شريط القوائم عشان الفحص والتنبيهات يستمرّوا. إنهاء التطبيق بيوقفهم. فحص الحساب محلي، ومش بيبعت مهمة للموديل.", "Close the workshop window and keep Fawaly running in the menu bar for checks and notifications. Quitting stops them. Account checks inspect saved sign-in without sending a model task.")).font(.caption).foregroundStyle(.secondary)
                     HStack {
                         Button(model.text("راجع الحسابات دلوقتي", "Check accounts now")) { Task { await model.checkAccountsNow() } }
                             .disabled(model.checkingAccounts || model.showOnboarding || model.teamJobs.contains(where: { $0.status == "running" }))
@@ -41,6 +49,8 @@ struct WorkshopSettingsPage: View {
                     if let summary = model.accountCheckSummary { Text(summary).font(.caption) }
                 }
             }
+            WorkshopCard { WorkshopUpdatesView(updates: model.updates, arabic: model.arabic) }
+            WorkshopCard { PreferencesSyncView(sync: model.preferencesSync) }
             WorkshopCard {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(model.text("نسخة من إعداداتك", "Back up your preferences")).font(.headline)
@@ -84,12 +94,16 @@ struct WorkshopSettingsPage: View {
                         Button(model.text("إعادة قراءة السجل", "Reload saved data")) { model.load() }
                     }
                     Link(model.text("موقع الفواعلي وتنزيل الماك", "Fawaly website & Mac download"), destination: URL(string: "https://daxow.com/fawaly")!)
+                    Text(model.text("النسخة الرسمية مجانية وهتفضل مجانية. اشتراكات واستخدام خدمات الذكاء الاصطناعي منفصلة.", "The official app is free and will remain free. AI service subscriptions and usage are separate.")).font(.caption)
+                    Link(model.text("الكود المصدر — AGPL-3.0-or-later", "Source code — AGPL-3.0-or-later"), destination: URL(string: "https://github.com/daxowapp/fawaly")!)
+                    Button(model.text("اقرأ تراخيص البرامج", "Read software licenses")) { showLicenses = true }
                     Link(model.text("سياسة الخصوصية الأصلية", "Original privacy policy"), destination: URL(string: "https://daxow.com/fawaly/privacy")!)
                     Text(model.text("الفكرة والاسم: أحمد نجدي — Ahmed Nagdy. تطوير الفواعلي: Daxow.", "Original idea and name: Ahmed Nagdy. Fawaly development: Daxow.")).font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
         .onAppear { do { catalog = try SignedCatalog.load(root: model.dataDirectory) } catch { model.report(error) } }
+        .sheet(isPresented: $showLicenses) { WorkshopLicenses(arabic: model.arabic) }
         .confirmationDialog(model.text("استيراد الإعدادات؟", "Import these preferences?"), isPresented: Binding(get: { pendingBackup != nil }, set: { if !$0 { pendingBackup = nil } })) {
             Button(model.text("استيراد", "Import")) {
                 guard let backup = pendingBackup else { return }

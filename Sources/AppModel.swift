@@ -17,10 +17,21 @@ final class AppModel: ObservableObject {
     @Published private(set) var nativeAgents: [EngineAgent] = []
     @Published private(set) var loaded = false
     @Published private(set) var busy = false
+    @Published var requestedPage: AppPage?
+    @Published var confirmQuit = false
+    @Published private(set) var activeComparisons = 0
+    private var monitor: Task<Void, Never>?
+    private let monitoringStarted = Date()
+    private var notified = Set<UUID>()
+    private var launcherChecked = false
+    var activeWorkCount: Int { teamJobs.filter { $0.status == "running" }.count + activeComparisons }
+
     @Published var problem: String?
     @Published var showProviderSheet = false
     @Published var showOnboarding = false
     let setup: SetupCoordinator
+    let updates: WorkshopUpdates
+    let preferencesSync: PreferencesSyncController
 
     @Published private(set) var checkingAccounts = false
     @Published private(set) var accountCheckSummary: String?
@@ -30,11 +41,17 @@ final class AppModel: ObservableObject {
     private let engine: EngineConfiguration
 
     init(root: URL = Paths.rebuiltRoot(), setupDependencies: SetupCoordinator.Dependencies? = nil) {
+        updates = WorkshopUpdates(root: root)
+        preferencesSync = PreferencesSyncController(root: root)
         setup = SetupCoordinator(dependencies: setupDependencies ?? .live(root: root))
         store = WorkshopStore(root: root)
         consultLog = ConsultLog(root: root)
         engine = EngineConfiguration(root: root)
         load()
+        updates.canBegin = { [weak self] in
+            guard let self else { return false }
+            return self.loaded && !self.busy && !self.setup.busy && !self.showOnboarding
+        }
     }
 
     var arabic: Bool { state.arabic }
@@ -45,7 +62,7 @@ final class AppModel: ObservableObject {
             providers[Self.connected] = Provider(name: endpoint.url.host ?? "HTTPS", models: [endpoint.model], billing: .metered)
         }
         for agent in nativeAgents {
-            providers[agent.providerID] = Provider(name: agent.label, models: [agent.modelLabel], billing: .subscription)
+            providers[agent.providerID] = Provider(name: agent.label, models: [agent.modelLabel], billing: agent.isNative ? .subscription : .metered)
         }
         return RosterView(advisors: state.advisors, providers: providers)
     }
@@ -76,17 +93,43 @@ final class AppModel: ObservableObject {
         guard loaded else { return }
         do {
             let recent = try TeamJobLog(root: engine.root).recent(limit: nil)
-            if state.preferences?.notifications == true {
-                let runningIDs = Set(teamJobs.filter { $0.status == "running" }.map(\.id))
-                for job in recent where runningIDs.contains(job.id) && job.finished != nil {
-                    let language = arabic
-                    Task { await WorkshopNotifications.completed(agent: job.worker, needsReview: job.reviewRequired, arabic: language) }
-                }
+            for job in recent where job.finished != nil {
+                guard notified.insert(job.id).inserted, let finished = job.finished,
+                      finished >= monitoringStarted, state.preferences?.notifications == true else { continue }
+                let language = arabic
+                Task { await WorkshopNotifications.completed(agent: job.worker, needsReview: job.reviewRequired,
+                    failed: ["failed", "cancelled"].contains(job.status), arabic: language) }
             }
+            activeComparisons = (try? ComparisonStore(root: engine.root).recent().filter {
+                $0.runs.contains { ["running", "waiting"].contains($0.status) }
+            }.count) ?? 0
             if recent != teamJobs { teamJobs = recent }
             let records = try consultLog.recent()
             if records != consults { consults = records }
         } catch { report(error) }
+    }
+
+    func startMonitoring() {
+        guard monitor == nil else { return }
+        monitor = Task { [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(3)) } catch { return }
+                guard let self else { return }
+                self.refreshTeamActivity()
+                self.refreshClientLauncher()
+                await self.checkAccountsIfDue()
+                await self.preferencesSync.poll(state: self.state, idle: !self.busy && !self.setup.busy && !self.showOnboarding && !self.checkingAccounts && self.activeWorkCount == 0)
+            }
+        }
+    }
+
+    func refreshClientLauncher() {
+        guard !launcherChecked, !busy, !setup.busy, let application = Bundle.main.executableURL else { return }
+        let launcher = ClientLauncher(root: dataDirectory)
+        guard FileManager.default.fileExists(atPath: launcher.url.path), let lease = try? WorkActivityLease(root: dataDirectory) else { return }
+        defer { withExtendedLifetime(lease) {} }
+        do { try launcher.prepare(application: application); launcherChecked = true }
+        catch { launcherChecked = true; report(error) }
     }
 
     func saveWorkerModel(_ agent: EngineAgent, model: String?) throws {
@@ -144,7 +187,7 @@ final class AppModel: ObservableObject {
         defer { checkingAccounts = false }
         let service = NativeSignIn(configuration: engine)
         var checked = 0, connected = 0
-        for agent in EngineAgent.allCases where engine.isReady(agent) {
+        for agent in EngineAgent.nativeAgents where engine.isReady(agent) {
             do { if try await service.verify(agent) { connected += 1 }; checked += 1 }
             catch is CancellationError { return }
             catch { checked += 1 }

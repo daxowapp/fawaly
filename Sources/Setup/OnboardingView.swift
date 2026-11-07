@@ -58,7 +58,7 @@ struct OnboardingView: View {
     private var prepare: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(model.text("اختار الخدمات اللي هتستخدمها", "Choose the services you want")).font(.headline)
-            ForEach(EngineAgent.allCases, id: \.self) { agent in
+            ForEach(EngineAgent.nativeAgents, id: \.self) { agent in
                 if setup.selected.contains(agent) {
                     ConnectionStatus(agent: agent, phase: setup.phases[agent] ?? .missing)
                 }
@@ -167,7 +167,7 @@ struct ConnectionStatus: View {
         case .preparing: model.text("جاري التجهيز…", "Preparing…")
         case .signingIn: model.text("كمّل تسجيل الدخول في المتصفح", "Complete sign-in in your browser")
         case .verifying: model.text("بنتحقق من الربط…", "Checking connection…")
-        case .connected: model.text("تم التحقق من تسجيل الدخول", "Sign-in verified")
+        case .connected: agent.isNative ? model.text("تم التحقق من تسجيل الدخول", "Sign-in verified") : model.text("إعداد الخدمة محفوظ ومفعّل", "Service configured and enabled")
         case .failed: model.text("محتاج محاولة تانية", "Please retry")
         }
     }

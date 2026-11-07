@@ -35,11 +35,11 @@ flowchart LR
     Primary -->|Independent decision and evidence| Workshop[Fawaly workshop]
 ```
 
-| Role | Supported native agents |
+| Role | Available assistants |
 | --- | --- |
 | Primary | Codex, Claude Code |
-| Advisor | Codex, Claude Code, Kimi Code |
-| Worker | Codex, Claude Code, Kimi Code |
+| Advisor | Native accounts plus configured API/local assistants |
+| Worker | Native accounts plus configured API/local assistants |
 
 An agent has one role in a saved team. A typical team is **Codex → Claude advisor + Kimi worker**. You can change roles in setup. Primary agents decide when to call tools; integrations cannot guarantee every model will always follow a policy.
 
@@ -63,13 +63,16 @@ For substantial tasks, the team instructions ask the primary to consult accordin
 - Searchable tasks and reviews, live progress, stop controls, independent review evidence, and optional primary ratings.
 - Isolated Git HEAD comparisons with two assistants. Your uncommitted files stay outside the snapshots. Selecting a winner never merges it automatically.
 - Explicit supporting-agent model choices, a verified signed reference catalog, local activity counts, and settings export/import without credentials.
-- Optional local notifications and morning account checks while the app is open. Settings files can be moved using iCloud Drive; this is not automatic cross-device sync.
+- Menu bar status, background monitoring after the window closes, optional launch at login, local notifications and morning account checks. Quitting stops monitoring.
+- Folder-based preference sync suitable for iCloud Drive, with explicit approval of incoming settings and stale-revision protection. Credentials, roles, project grants and history remain local.
+- Z.AI, MiniMax, DeepSeek, custom OpenAI/Anthropic-compatible APIs, Ollama and LM Studio configuration through the UI and Keychain. Project tools have bounded reads and coordinated writes, no shell, and required primary review. Local request caps and provider-reported tokens are distinct from official account balances.
+- Signed-update infrastructure and a universal Developer ID/notarization packaging script. Ad-hoc previews cannot self-update; see [distribution](Docs/Distribution.md).
 
-Official subscription balances, spending caps, automatic metered fallback, additional historical provider adapters, automatic model discovery, and complete old app parity are **not implemented**. Account availability and local job counts are not quota measurements.
+Official subscription balances and dollar spending caps are unavailable. There is no automatic paid retry/fallback. Compatible APIs can list their models; Anthropic-compatible services keep the explicitly configured ID. New API adapters have fixture coverage; live cloud-provider verification requires the user’s keys and is not claimed. Complete old app/widget parity is not claimed. Account availability and local job counts are not quota measurements.
 
 ## Build and test
 
-Requires macOS 14+, full Xcode, and acceptance of Xcode’s license. Tested locally with Xcode 27.2. No external Swift package dependencies.
+Requires macOS 14+, full Xcode, and acceptance of Xcode’s license. Tested locally with Xcode 27.2. Sparkle 2.10.1 is pinned through Swift Package Manager; Xcode downloads the official binary package.
 
 ```sh
 git clone https://github.com/daxowapp/fawaly.git

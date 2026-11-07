@@ -6,6 +6,11 @@ import Security
 
 enum EngineAgent: String, CaseIterable, Codable, Sendable {
     case codex, claude, kimi
+    case zai, minimax, deepseek, anthropicAPI, openAIAPI, ollama, lmstudio
+
+    static let nativeAgents: [EngineAgent] = [.codex, .claude, .kimi]
+    var isNative: Bool { Self.nativeAgents.contains(self) }
+    var billingLabel: String { isNative ? "subscription" : [.ollama, .lmstudio].contains(self) ? "local_endpoint" : "provider_account" }
 
     static let primaryAgents: [EngineAgent] = [.codex, .claude]
 
@@ -15,14 +20,17 @@ enum EngineAgent: String, CaseIterable, Codable, Sendable {
         case .codex: "Codex"
         case .claude: "Claude Code"
         case .kimi: "Kimi"
+        case .zai: "Z.AI"
+        case .minimax: "MiniMax"
+        case .deepseek: "DeepSeek"
+        case .anthropicAPI: "Anthropic-compatible API"
+        case .openAIAPI: "OpenAI-compatible API"
+        case .ollama: "Ollama"
+        case .lmstudio: "LM Studio"
         }
     }
     var caller: Rater {
-        switch self {
-        case .codex: .codex
-        case .claude: .claude
-        case .kimi: .kimi
-        }
+        Rater(rawValue: rawValue)!
     }
     var modelLabel: String { "default" }
 
@@ -32,6 +40,7 @@ enum EngineAgent: String, CaseIterable, Codable, Sendable {
     }
 
     func executable(home: URL = FileManager.default.homeDirectoryForCurrentUser, root: URL = Paths.rebuiltRoot()) -> URL? {
+        guard isNative else { return nil }
         if self == .kimi {
             let managed = root.appendingPathComponent("runtimes/kimi")
             return FileManager.default.isExecutableFile(atPath: managed.path) ? managed.resolvingSymlinksInPath() : nil
@@ -69,6 +78,7 @@ struct EngineConfiguration: Sendable {
     }
 
     func isReady(_ agent: EngineAgent) -> Bool {
+        if !agent.isNative { return (try? APIAssistantStore(root: root).load(agent)).map { $0.enabled && ($0.local || APIAssistantKeychain.contains($0)) } ?? false }
         guard agent.executable(root: root) != nil else { return false }
         switch agent {
         case .codex:
@@ -81,6 +91,7 @@ struct EngineConfiguration: Sendable {
             return hasNativeSignIn(.claude) || (try? EngineKeychain.claudeToken()) != nil
         case .kimi:
             return hasNativeSignIn(.kimi) && KimiWorker.hasCredentials(nativeAuthDirectory(.kimi))
+        default: return false
         }
     }
 

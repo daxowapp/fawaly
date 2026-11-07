@@ -5,5 +5,5 @@
 - `Resources/Lalezar-Regular.ttf` is Lalezar, licensed under the SIL Open Font License 1.1. The full original notice is in `Resources/OFL.txt`. That font retains its own license.
 - The signed catalog is a recovered provider reference snapshot. Listing a provider does not imply an available integration, endorsement, or verified current pricing.
 - Codex, Claude Code, and Kimi Code runtimes are **not included in this repository**. Setup obtains unmodified tools from official vendor distribution sources. Their licenses, terms, accounts, and usage charges remain separate. Fawaly’s AGPL does not relicense those tools.
-- Swift, SwiftUI, AppKit, CryptoKit, SQLite, and Apple SDKs are used under their respective platform licenses. Fawaly has no external Swift package dependencies.
+- Swift, SwiftUI, AppKit, CryptoKit, SQLite, and Apple SDKs are used under their respective platform licenses. Sparkle 2.10.1 is the pinned Swift package dependency. Its full license and bundled component notices are included in `Resources/Sparkle-LICENSE.txt`.
 - Provider names, logos where applicable, and trademarks belong to their respective owners. Fawaly is independently developed and is not an official provider product.

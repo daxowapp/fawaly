@@ -16,6 +16,9 @@ struct TeamHomeView: View {
                     role(model.text("الفواعلي", "Workers"), name: team.workers.map(\.label).joined(separator: ", ").isEmpty ? model.text("مفيش فواعلي متعينين", "No workers assigned") : team.workers.map(\.label).joined(separator: ", "), detail: model.text("ينفّذوا المهام المفوّضة", "Handle delegated tasks"))
                 }
                 Text(model.text("ابدأ محادثتك في \(team.primary.label). الأساسي يخطّط ويستخدم الفريق حسب القواعد المحفوظة، ويراجع تغييرات العامل وأدلة التحقق قبل تسجيل قراره. النتائج والقرارات هتظهر في السجل.", "Start your chat in \(team.primary.label). The primary plans, uses the team according to saved rules, and independently checks worker changes and verification evidence before recording its decision. Results and decisions appear in the ledger.")).font(.callout)
+                if team.primary == .claude {
+                    Text(model.text("في تطبيق Claude، افتح تبويب Code وابدأ جلسة محلية على الماك ده عشان تستخدم فريقك ومشروعك.", "In Claude, open the Code tab and start a local session on this Mac to use your team and project.")).font(.callout)
+                }
                 HStack {
                     Button(model.text("افتح \(team.primary.label)", "Open \(team.primary.label)")) { openPrimary() }.buttonStyle(WorkshopPrimaryButtonStyle())
                     Button(model.text("عدّل الفريق", "Edit team")) { model.editTeam() }.disabled(model.busy)

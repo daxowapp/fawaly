@@ -27,7 +27,7 @@ struct EngineBridge: Sendable {
         let changedFiles: [String]?
         let schema = "delegate-relay.result.v1"
         var jobId = UUID()
-        let billing = "subscription"
+        var billing = "subscription"
     }
 
     struct Status: Encodable {
@@ -35,7 +35,7 @@ struct EngineBridge: Sendable {
             let provider: String
             let status: String
             let workerModel: String?
-            let billing = "subscription"
+            var billing = "subscription"
         }
         let providers: [String: Availability]
         let advisor: AdvisorSettings
@@ -45,13 +45,16 @@ struct EngineBridge: Sendable {
         let active: [String]
         let language: String
         let schema = "delegate-relay.availability.v1"
-        let version = "rebuilt-0.6.1"
+        let version = "rebuilt-0.7.0"
     }
 
     func status() throws -> Status {
         let state = try WorkshopStore(root: configuration.root).load()
-        let providers = Dictionary(uniqueKeysWithValues: EngineAgent.allCases.map { agent in
-            (agent.providerID, Status.Availability(provider: agent.providerID, status: ready(agent) ? (configuration.isWorking(agent) ? "busy" : "available") : "authentication_required", workerModel: state.workerModels?[agent.rawValue]))
+        let providers = try Dictionary(uniqueKeysWithValues: EngineAgent.allCases.map { agent in
+            let configured = agent.isNative ? nil : try APIAssistantStore(root: configuration.root).load(agent)
+            let available = ready(agent)
+            let status = available ? (try hasCapacity(agent) ? (configuration.isWorking(agent) ? "busy" : "available") : "local_limit_reached") : configured?.enabled == false ? "paused" : "authentication_required"
+            return (agent.providerID, Status.Availability(provider: agent.providerID, status: status, workerModel: state.workerModels?[agent.rawValue] ?? configured?.model, billing: agent.billingLabel))
         })
         return Status(providers: providers, advisor: state.advisors, team: state.team, delegation: state.delegationPolicy ?? DelegationPolicy(), projectDirectory: state.projectDirectory?.path,
                       active: try TeamJobLog(root: configuration.root).recent().filter { $0.status == "running" }.map { $0.id.uuidString }, language: state.arabic ? "ar" : "en")
@@ -68,27 +71,28 @@ struct EngineBridge: Sendable {
         let shortTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard shortTitle.map({ $0.utf8.count <= 240 && !$0.contains(where: \.isNewline) }) ?? true else { throw FawalyError.invalid("Use a short, single-line task title.") }
         var job = TeamJob(primary: client, worker: agent, title: shortTitle.flatMap { $0.isEmpty ? nil : $0 } ?? String(brief.prefix(180)))
+        let selectedModel = try state.workerModels?[agent.rawValue] ?? (agent.isNative ? nil : APIAssistantStore(root: configuration.root).load(agent)?.model)
         try log.save(job)
         let stopFile = configuration.stopFile(job.id)
         defer { try? FileManager.default.removeItem(at: stopFile) }
         let result: Result
         do {
-            let answer = try await WorkerContext.$modelPreference.withValue(WorkerModelPreference(agent: agent, model: state.workerModels?[agent.rawValue])) {
+            let answer = try await WorkerContext.$modelPreference.withValue(WorkerModelPreference(agent: agent, model: selectedModel)) {
                 try await WorkerContext.$stopFile.withValue(stopFile) {
                     try await worker(agent, brief, workspace, effectiveTimeout)
                 }
             }
             result = Result(status: workspace == nil ? "completed" : "needs_handoff",
-                            provider: agent.providerID, model: state.workerModels?[agent.rawValue] ?? agent.modelLabel, finalMessage: answer,
-                            reviewRequired: workspace != nil, changedFiles: workspace == nil ? [] : nil, jobId: job.id)
+                            provider: agent.providerID, model: selectedModel ?? agent.modelLabel, finalMessage: answer,
+                            reviewRequired: workspace != nil, changedFiles: workspace == nil ? [] : nil, jobId: job.id, billing: agent.billingLabel)
         } catch is WorkerStopped {
             job.status = workspace == nil ? "cancelled" : "needs_handoff"
             job.finished = Date()
             job.result = "Stopped by the user. Review any partial changes before continuing."
             job.reviewRequired = workspace != nil
             try log.save(job)
-            return Result(status: job.status, provider: agent.providerID, model: agent.modelLabel,
-                          finalMessage: job.result!, reviewRequired: job.reviewRequired, changedFiles: nil, jobId: job.id)
+            return Result(status: job.status, provider: agent.providerID, model: selectedModel ?? agent.modelLabel,
+                          finalMessage: job.result!, reviewRequired: job.reviewRequired, changedFiles: nil, jobId: job.id, billing: agent.billingLabel)
         } catch is CancellationError {
             job.status = workspace == nil ? "cancelled" : "needs_handoff"
             job.reviewRequired = workspace != nil
@@ -103,9 +107,9 @@ struct EngineBridge: Sendable {
             job.reviewRequired = workspace != nil
             try log.save(job)
             guard workspace != nil else { throw error }
-            return Result(status: "needs_handoff", provider: agent.providerID, model: agent.modelLabel,
+            return Result(status: "needs_handoff", provider: agent.providerID, model: selectedModel ?? agent.modelLabel,
                           finalMessage: error.localizedDescription + " Review the workspace for partial edits.",
-                          reviewRequired: true, changedFiles: nil, jobId: job.id)
+                          reviewRequired: true, changedFiles: nil, jobId: job.id, billing: agent.billingLabel)
         }
         job.status = result.status
         job.finished = Date()
@@ -140,7 +144,8 @@ struct EngineBridge: Sendable {
         }
         let agent = try select(previous?.provider ?? provider, consultation: true)
         let prompt = Self.consultationPrompt(question: question, context: context, previous: previous?.rounds ?? [])
-        let selectedModel = previous?.modelPinned == true ? previous?.requestedModel : state.workerModels?[agent.rawValue]
+        let configuredModel = try state.workerModels?[agent.rawValue] ?? (agent.isNative ? nil : APIAssistantStore(root: configuration.root).load(agent)?.model)
+        let selectedModel = previous?.modelPinned == true ? previous?.requestedModel : configuredModel
         let answer = try await WorkerContext.$modelPreference.withValue(WorkerModelPreference(agent: agent, model: selectedModel)) {
             try await worker(agent, prompt, nil, settings.timeoutMinutes * 60)
         }
@@ -203,14 +208,16 @@ struct EngineBridge: Sendable {
             let allowed = consultation ? team.advisor.map { [$0] } ?? [] : policy.workers(kind: kind, team: team)
             let candidate: EngineAgent?
             if let pinned { candidate = EngineAgent(provider: pinned) }
-            else { candidate = allowed.first(where: { ready($0) && !configuration.isWorking($0) }) }
+            else { candidate = try allowed.first(where: { try ready($0) && !configuration.isWorking($0) && hasCapacity($0) }) }
             if pinned == nil, candidate == nil, allowed.contains(where: ready) {
+                if try allowed.contains(where: { try ready($0) && !hasCapacity($0) }) { throw FawalyError.invalid("Assigned workers reached their local daily request cap. Adjust it in Fawaly or wait for the next UTC day.") }
                 throw FawalyError.invalid(consultation ? "Your advisor is busy. Retry when its current task finishes." : "Your assigned workers are busy. Retry after a current task finishes.")
             }
             guard let candidate, allowed.contains(candidate) else {
                 throw FawalyError.invalid(consultation ? "Choose a connected advisor in Fawaly team setup." : "Choose a worker in Fawaly team setup before delegating.")
             }
             guard ready(candidate) else { throw FawalyError.invalid(candidate.label + " is not connected to Fawaly.") }
+            guard try hasCapacity(candidate) else { throw FawalyError.invalid("This assistant reached its local daily request cap. No provider request was sent.") }
             return candidate
         }
         if let pinned {
@@ -221,9 +228,14 @@ struct EngineBridge: Sendable {
             guard ready(agent) else { throw FawalyError.invalid(agent.label + " is not connected to Fawaly.") }
             return agent
         }
-        guard let agent = EngineAgent.allCases.first(where: { $0 != client && ready($0) }) else {
+        guard let agent = EngineAgent.nativeAgents.first(where: { $0 != client && ready($0) }) else {
             throw FawalyError.invalid("Connect the other CLI in Fawaly Services before delegating.")
         }
         return agent
+    }
+
+    private func hasCapacity(_ agent: EngineAgent) throws -> Bool {
+        guard !agent.isNative, let profile = try APIAssistantStore(root: configuration.root).load(agent) else { return true }
+        return try APIUsage(root: configuration.root).totals(agent).requests < profile.dailyRequestLimit
     }
 }

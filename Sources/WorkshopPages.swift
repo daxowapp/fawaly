@@ -80,9 +80,10 @@ struct PrimaryConnectionPage: View {
         VStack(alignment: .leading, spacing: 16) {
             WorkshopCard {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(model.text("الربط ليس إثبات تنفيذ", "Connection is separate from execution")).font(.headline)
-                    Text(model.text("إعداد MCP محفوظ أثناء الإعداد. ظهور الحساب كمتاح لا يثبت تشغيل مهمة. افتح الأساسي واكتب مهمتك؛ قواعد الفريق بتوجّه الاستشارة والتفويض. راجع تقرير العامل ثم قرار الأساسي في سجل المهام والمراجعات.", "MCP is saved during setup. An available account does not prove a task ran. Open your primary and give it your task. Team rules guide consultation and delegation; inspect the worker report and primary decision in Tasks & reviews."))
+                    Text(model.text("ابدأ مهمتك مع فريقك", "Start work with your team")).font(.headline)
+                    Text(model.text("افتح الأساسي واكتب مهمتك. قواعدك بتوجّه الاستشارة والتفويض؛ هنا هتتابع شغل الفواعلي ونتايجهم ومراجعة الأساسي.", "Open your primary and give it your task. Your rules guide consultation and delegation; follow worker results and your primary’s review here."))
                     DisclosureGroup(model.text("تفاصيل الربط", "Connection details")) {
+                        Text(model.text("ربط MCP محفوظ أثناء الإعداد. توفر الحساب محليًا وحده مش إثبات تنفيذ؛ التقارير وأدلة المراجعة بتظهر في السجل.", "MCP is saved during setup. Local account availability alone does not prove execution; inspect reports and review evidence in the ledger.")).font(.caption)
                         Text("roster_get · delegate · consult · consult_decide · review · stop").font(.caption.monospaced()).textSelection(.enabled)
                     }
                     Button(model.text("إعداد الربط والفريق…", "Configure connection and team…")) { model.editTeam() }.disabled(model.busy)
@@ -109,7 +110,8 @@ struct UsagePage: View {
                 WorkshopCard {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(agent.label).font(.headline)
-                        Text(model.nativeAgents.contains(agent) ? model.text("تسجيل الدخول متاح محليًا", "Local sign-in available") : model.text("لم يُؤكد تسجيل الدخول محليًا", "Local sign-in not confirmed"))
+                        Text(model.nativeAgents.contains(agent) ? (agent.isNative ? model.text("تسجيل الدخول متاح محليًا", "Local sign-in available") : model.text("إعداد الخدمة محفوظ ومفعّل", "Service configured and enabled")) : model.text("غير متاح حاليًا", "Currently unavailable"))
+                        if !agent.isNative { APIUsageSummary(agent: agent, root: model.dataDirectory, arabic: model.arabic) }
                         Text(model.text("الرصيد والحدود الرسمية غير متاحة عبر هذا الربط. راجع حسابك لدى الخدمة.", "Official balance and limits are unavailable through this connection. Check your provider account.")).font(.caption).foregroundStyle(.secondary)
                     }
                 }

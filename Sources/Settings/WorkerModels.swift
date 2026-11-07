@@ -13,6 +13,8 @@ enum NativeModelCatalog {
             let result = try await LoginProcess.run(command, timeout: 20)
             guard result.exitCode == 0 else { throw FawalyError.invalid("Kimi’s saved model list could not be read.") }
             return kimiModels(Data(result.output.utf8))
+        default:
+            return try await APIWorker(root: root).models(agent)
         }
     }
     static func kimiModels(_ data: Data) -> [String] {

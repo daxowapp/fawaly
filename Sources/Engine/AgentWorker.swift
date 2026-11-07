@@ -55,6 +55,7 @@ struct AgentWorker: Sendable {
                          "--tools", workspace == nil ? "" : "Read,Glob,Grep,Edit,Write",
                          "--permission-mode", workspace == nil ? "default" : "acceptEdits"]
             if let workspace { arguments += ["--add-dir", workspace.path] }
+        default: throw FawalyError.invalid("API assistants do not launch a native CLI.")
         }
         if let model {
             guard OfficialModels.valid(model) else { throw FawalyError.invalid("Invalid worker model identifier.") }
@@ -69,7 +70,6 @@ struct AgentWorker: Sendable {
         guard ProcessInfo.processInfo.environment["DELEGATE_WORKER_DEPTH"]?.isEmpty != false else {
             throw FawalyError.invalid("Nested Fawaly delegation is disabled.")
         }
-        guard let executable = agent.executable(root: configuration.root) else { throw FawalyError.invalid(agent.label + " CLI is not installed.") }
         let lock = try configuration.lockWorkerAccess()
         defer { close(lock) }
         let authorizedWorkspace = try workspace.map { directory in
@@ -78,6 +78,15 @@ struct AgentWorker: Sendable {
         }
         let workerLocks = try configuration.lockWorker(agent, workspace: authorizedWorkspace)
         defer { workerLocks.forEach { close($0) } }
+        if !agent.isNative {
+            guard let assistant = try APIAssistantStore(root: configuration.root).load(agent), assistant.enabled else { throw FawalyError.invalid("Connect this assistant in Fawaly first.") }
+            let preference = WorkerContext.modelPreference
+            let selectedModel = preference?.agent == agent ? preference?.model : try WorkshopStore(root: configuration.root).load().workerModels?[agent.rawValue]
+            var selected = assistant
+            if let selectedModel { selected.model = selectedModel }
+            return try await APIWorker(root: configuration.root).run(selected, prompt: prompt, workspace: authorizedWorkspace, timeout: timeout)
+        }
+        guard let executable = agent.executable(root: configuration.root) else { throw FawalyError.invalid(agent.label + " CLI is not installed.") }
         if agent == .codex {
             try configuration.prepareCodexHome()
             guard configuration.isReady(.codex) else {
@@ -168,6 +177,7 @@ struct AgentWorker: Sendable {
         case .claude:
             let object = try? JSONSerialization.jsonObject(with: output) as? [String: Any]
             text = object?["is_error"] as? Bool == true ? nil : object?["result"] as? String
+        default: text = nil
         }
         guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw FawalyError.invalid(agent.label + " did not return a usable answer. Check the isolated sign-in.")

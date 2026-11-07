@@ -131,6 +131,7 @@ struct RuntimeInstaller: Sendable {
         case .codex: team = "2DC432GLL2" // OpenAI OpCo, LLC
         case .claude: team = "Q6L2SF6YDW" // Anthropic PBC
         case .kimi: team = "2J9472RW75" // Beijing Moonshot Technology Co., Ltd
+        default: throw FawalyError.invalid("This service does not install a native CLI.")
         }
         _ = try await run("/usr/bin/codesign", ["--verify", "--strict",
             "-R=anchor apple generic and certificate leaf[subject.OU] = \"" + team + "\"", file.path], at: directory)
