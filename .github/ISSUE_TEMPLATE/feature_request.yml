@@ -1,0 +1,14 @@
+name: Feature request
+description: Suggest a useful improvement
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What problem should this solve?
+      description: Describe the user's workflow and the desired result.
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: Suggested approach and alternatives

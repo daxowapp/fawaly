@@ -1,0 +1,22 @@
+name: macOS build and tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show toolchain
+        run: xcodebuild -version
+      - name: Build and test without provider accounts
+        run: >-
+          xcodebuild -project "Fawaly Rebuilt.xcodeproj"
+          -scheme "Fawaly Rebuilt" -destination 'platform=macOS'
+          -derivedDataPath Build/CI -parallel-testing-enabled NO test
+      - name: Check whitespace
+        run: git diff --check

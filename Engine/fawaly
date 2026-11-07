@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+project=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+binary="$project/Build/Fawaly Rebuilt.app/Contents/MacOS/Fawaly Rebuilt"
+if [ ! -x "$binary" ]; then
+    printf '%s\n' 'Build Fawaly Rebuilt and place the app in Build/ before starting its engine.' >&2
+    exit 1
+fi
+if [ "$#" -eq 0 ]; then
+    set -- --help
+fi
+exec "$binary" "$@"

@@ -1,0 +1,10 @@
+Build/
+DerivedData/
+.DS_Store
+*.xcuserstate
+xcuserdata/
+.env
+.env.*
+!.env.example
+.codex/config.toml
+.mcp.json
