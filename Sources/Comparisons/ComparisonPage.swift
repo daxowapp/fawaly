@@ -68,7 +68,7 @@ struct ComparisonPage: View {
         panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
         panel.prompt = model.text("اختار المشروع", "Choose project")
         panel.message = model.text("المساعدان هيشتغلوا على نسختين من الملفات المحفوظة في Git، وممكن يبعثوا سياق المهمة لخدماتهم. ملفاتك الحالية مش هتتعدّل.", "The selected assistants work on two copies of committed files and may send task context to their services. Your working files are not modified.")
-        panel.begin { result in
+        panel.presentInWorkshop { result in
             selectingProject = false
             if result == .OK { project = panel.url }
         }
@@ -150,7 +150,8 @@ private struct ComparisonResultCard: View {
         }
     }
     private func status(_ run: ComparisonSession.Run) -> String {
-        switch run.status {
+        if session.winner == run.agent { return model.text("مختار بعد المراجعة", "Selected after review") }
+        return switch run.status {
         case "waiting": model.text("مستني دوره", "Waiting")
         case "running": model.text("شغّال على نسخته المنفصلة", "Working in its own snapshot")
         case "cancelled": model.text("اتلغت قبل التنفيذ", "Cancelled before execution")

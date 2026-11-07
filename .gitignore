@@ -8,3 +8,9 @@ xcuserdata/
 !.env.example
 .codex/config.toml
 .mcp.json
+# Local Apple signing material and private keys
+*.p12
+*.p8
+*.key
+*.pem
+*.mobileprovision

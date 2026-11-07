@@ -35,6 +35,9 @@ struct AgentWorker: Sendable {
             arguments.append("-")
         case .kimi:
             guard kimiHome != nil else { throw FawalyError.invalid("Open Fawaly Services and connect Kimi.") }
+            // Kimi watches HOME for user settings. Keep that watcher inside the
+            // private assignment folder; never grant it the real home directory.
+            environment["HOME"] = directory.path
             environment["KIMI_CODE_HOME"] = directory.appendingPathComponent("kimi-config").path
             environment["KIMI_DISABLE_TELEMETRY"] = "1"
             arguments = ["--agent-file", directory.appendingPathComponent("fawaly-worker.md").path,
@@ -97,7 +100,7 @@ struct AgentWorker: Sendable {
         let profile = directory.appendingPathComponent("worker.sb")
         try Self.sandboxProfile(invocation: invocation, directory: directory, workspace: authorizedWorkspace,
                                 codexHome: agent == .codex ? configuration.codexHome : agent == .kimi ? kimiHome : claudeHome,
-                                authKeychain: agent == .claude && claudeHome != nil ? EngineKeychain.defaultKeychainFile() : nil, protectGitMetadata: managedSnapshot).write(to: profile, atomically: true, encoding: .utf8)
+                                authKeychain: agent == .claude && claudeHome != nil ? EngineKeychain.defaultKeychainFile() : nil, protectGitMetadata: true).write(to: profile, atomically: true, encoding: .utf8)
         let workerPrompt = authorizedWorkspace.map { "The only approved project directory is " + $0.path + ". Use absolute paths under that directory.\n\n" + prompt } ?? prompt
         let output = try await WorkerProcess.run(program: "/usr/bin/sandbox-exec", arguments: ["-f", profile.path, executable.path] + invocation.arguments,
                                                   environment: invocation.environment, directory: directory,
@@ -105,7 +108,7 @@ struct AgentWorker: Sendable {
         return try Self.answer(agent, directory: directory, output: output)
     }
 
-    static func sandboxProfile(invocation: Invocation, directory: URL, workspace: URL?, codexHome: URL?, authKeychain: URL? = nil, protectGitMetadata: Bool = false) -> String {
+    static func sandboxProfile(invocation: Invocation, directory: URL, workspace: URL?, codexHome: URL?, authKeychain: URL? = nil, protectGitMetadata: Bool = true) -> String {
         let home = FileManager.default.homeDirectoryForCurrentUser.resolvingSymlinksInPath()
         let program = invocation.program
         let programPath = program.pathComponents

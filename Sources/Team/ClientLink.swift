@@ -40,7 +40,7 @@ struct ClientLink: Sendable {
 
     func checkEngine(_ primary: EngineAgent) async throws {
         let requests: [[String: Any]] = [
-            ["jsonrpc": "2.0", "id": 1, "method": "initialize", "params": ["protocolVersion": "2025-11-25", "capabilities": [:], "clientInfo": ["name": "fawaly-setup", "version": "0.6.0"]]],
+            ["jsonrpc": "2.0", "id": 1, "method": "initialize", "params": ["protocolVersion": "2025-11-25", "capabilities": [:], "clientInfo": ["name": "fawaly-setup", "version": "0.6.1"]]],
             ["jsonrpc": "2.0", "method": "notifications/initialized"],
             ["jsonrpc": "2.0", "id": 2, "method": "tools/list"]
         ]

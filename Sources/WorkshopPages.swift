@@ -81,7 +81,7 @@ struct PrimaryConnectionPage: View {
             WorkshopCard {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(model.text("الربط ليس إثبات تنفيذ", "Connection is separate from execution")).font(.headline)
-                    Text(model.text("إعداد MCP محفوظ أثناء الإعداد. ظهور الحساب كمتاح لا يثبت تشغيل مهمة. افتح الأساسي واطلب استخدام فريق الفواعلي؛ راجع تقرير العامل ثم قرار الأساسي في سجل المهام والمراجعات.", "MCP is saved during setup. An available account does not prove a task ran. Open your primary and ask it to use the Fawaly team; inspect the worker report and primary decision in Tasks & reviews."))
+                    Text(model.text("إعداد MCP محفوظ أثناء الإعداد. ظهور الحساب كمتاح لا يثبت تشغيل مهمة. افتح الأساسي واكتب مهمتك؛ قواعد الفريق بتوجّه الاستشارة والتفويض. راجع تقرير العامل ثم قرار الأساسي في سجل المهام والمراجعات.", "MCP is saved during setup. An available account does not prove a task ran. Open your primary and give it your task. Team rules guide consultation and delegation; inspect the worker report and primary decision in Tasks & reviews."))
                     DisclosureGroup(model.text("تفاصيل الربط", "Connection details")) {
                         Text("roster_get · delegate · consult · consult_decide · review · stop").font(.caption.monospaced()).textSelection(.enabled)
                     }

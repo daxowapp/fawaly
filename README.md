@@ -7,8 +7,9 @@
 
 A free, open-source macOS workshop for your AI coding team.
 
-[العربية](#العربية) · [Get started](#get-started) · [Contribute](CONTRIBUTING.md) · [License](LICENSE)
+[موقع الفواعلي وتنزيل الماك](https://daxow.com/fawaly) · [العربية](#العربية) · [Get started](#get-started) · [Contribute](CONTRIBUTING.md) · [License](LICENSE)
 
+[![macOS build and secret scan](https://github.com/daxowapp/fawaly/actions/workflows/macos.yml/badge.svg)](https://github.com/daxowapp/fawaly/actions/workflows/macos.yml)
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black)
 ![SwiftUI](https://img.shields.io/badge/SwiftUI-native-orange)
 ![AGPL v3 or later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)
@@ -21,7 +22,7 @@ Keep working in your usual **Codex or Claude Code**. Fawaly connects an independ
 
 **The official Fawaly app is free and will remain free.** No Fawaly subscription, paid unlocks, or artificial feature tiers. AI provider accounts, subscriptions, and usage are separate and subject to each provider’s terms. Fawaly does not make paid AI services free.
 
-> **Preview:** this is a working reconstruction of Fawaly, not a claim of complete historical feature parity. The current source is buildable and tested locally. A production-signed, notarized public installer is not available yet. See [verification and limits](Docs/Verification.md).
+> **Preview:** this is a working reconstruction of Fawaly, not a claim of complete historical feature parity. The current source is buildable and tested locally. A production-signed, notarized public installer is not available yet. See [verification and limits](Docs/Verification.md) and the [public source security review](Docs/Security-Review.md).
 
 ## How the team works
 
@@ -43,6 +44,8 @@ flowchart LR
 An agent has one role in a saved team. A typical team is **Codex → Claude advisor + Kimi worker**. You can change roles in setup. Primary agents decide when to call tools; integrations cannot guarantee every model will always follow a policy.
 
 ## Get started
+
+**[Fawaly on Daxow — Mac downloads and updates](https://daxow.com/fawaly).** This is the official product page to check for the Mac download when the signed installer is ready. This repository currently provides source; it does not yet publish a notarized installer.
 
 1. Build and open the app using the developer instructions below. A verified public installer will be documented here when available.
 2. Follow the Arabic or English setup: choose your primary, advisor, and workers.
@@ -104,7 +107,7 @@ Private modifications do not automatically require a public repository, and the 
 
 التجهيز بيتم من واجهة التطبيق: اختيار الفريق، تجهيز الأدوات الرسمية، تسجيل دخول من متصفح الخدمة، وربط الفريق. المستخدم العادي مش محتاج يكتب أوامر Terminal. تختار فولدر المشروع عشان تسمح للعمال بتعديله، والأساسي لازم يراجع الشغل قبل اعتماده.
 
-دي نسخة مستعادة ومطوّرة من التطبيق، وفيها أجزاء قديمة لسه محتاجة شغل. مفيش حاليًا مُثبّت عام موقّع وموثّق من Apple. المطور يقدر يبنيها من المصدر بالخطوات اللي فوق.
+دي نسخة مستعادة ومطوّرة من التطبيق، وفيها أجزاء قديمة لسه محتاجة شغل. مفيش حاليًا مُثبّت عام موقّع وموثّق من Apple. المطور يقدر يبنيها من المصدر بالخطوات اللي فوق. [موقع الفواعلي على Daxow ومكان متابعة تنزيل الماك](https://daxow.com/fawaly).
 
 الرخصة AGPLv3 أو أحدث بتضمن حقوق الاستخدام والتعديل والمشاركة، وبترجع حق الوصول للمصدر لمستخدمي النسخ الموزعة والخدمات المعدّلة حسب شروطها. بنشجّع كل تحسين يرجع هنا للمجتمع؛ إرسال Pull Request مش شرط إجباري في الرخصة، والتعديلات الخاصة مش لازم تتحول تلقائيًا لمشروع عام.
 

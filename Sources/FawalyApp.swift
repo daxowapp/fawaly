@@ -196,7 +196,7 @@ struct WorkshopWindow: View {
             WorkshopCard {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(model.text("جديد هنا؟ خد جولة سريعة", "New here? Take a quick tour")).font(.headline)
-                    Text(model.text("١. اربط الأساسي. ٢. جهّز المساعدين. ٣. اطلب التفويض من محادثتك. ٤. راجع الأدلة وقرار الأساسي في السجل.", "1. Connect your primary. 2. Prepare assistants. 3. Ask for delegation in your chat. 4. Inspect evidence and the primary decision in the ledger."))
+                    Text(model.text("١. اربط الأساسي. ٢. جهّز المساعدين. ٣. اكتب مهمتك عند الأساسي. ٤. راجع الأدلة وقرار الأساسي في السجل.", "1. Connect your primary. 2. Prepare assistants. 3. Give your primary a task. 4. Inspect evidence and the primary decision in the ledger."))
                     HStack {
                         Button(model.text("دليل الربط", "Connection guide")) { page = .connection }
                         Button(model.text("اكتب مهمة محلية", "Compose a local task")) { page = .shift }

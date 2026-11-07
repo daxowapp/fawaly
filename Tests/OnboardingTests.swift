@@ -252,7 +252,9 @@ private actor SetupFixture {
     #expect(command.environment["KIMI_API_KEY"] == nil)
     try await service.signIn(.kimi, region: .global, onURL: { _ in })
     #expect(configuration.isReady(.kimi))
+    try Data("fixture-provider-key".utf8).write(to: authentication.appendingPathComponent("config.toml"))
     try await service.signOut(.kimi)
+    #expect(!FileManager.default.fileExists(atPath: authentication.appendingPathComponent("config.toml").path))
     #expect(!configuration.isReady(.kimi))
     #expect(!KimiWorker.hasCredentials(authentication))
 }
@@ -260,4 +262,44 @@ private actor SetupFixture {
 @Test func kimiVerificationURLsStayOnOfficialHosts() {
     let urls = LoginProcess.browserURLs(in: "https://auth.kimi.com/device?user_code=fixture https://www.kimi.ai/device https://auth.kimi.ai.evil.test/device http://auth.kimi.com/device")
     #expect(urls.map(\.host) == ["auth.kimi.com", "www.kimi.ai"])
+}
+
+@Test func codexStatusDoesNotAcceptANegativeLoggedInMessage() async throws {
+    let root = try setupRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let service = NativeSignIn(configuration: EngineConfiguration(root: root), execute: { _, _, _ in
+        LoginReply(exitCode: 0, output: "Not logged in")
+    })
+    #expect(try await !service.verify(.codex))
+}
+
+@Test func loginProcessDoesNotWaitForAnOrphanHoldingItsOutputPipe() async throws {
+    let root = try setupRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let start = ContinuousClock.now
+    let reply = try await LoginProcess.run(LoginCommand(executable: URL(fileURLWithPath: "/bin/sh"),
+        arguments: ["-c", "/bin/sleep 3 & printf parent-finished"], environment: [:], directory: root), timeout: 0.5)
+    #expect(reply.output == "parent-finished")
+    #expect(start.duration(to: .now) < .seconds(1.5))
+}
+
+@Test func installerRefusesAnUnsignedExistingManagedRuntimeWithoutDownloading() async throws {
+    let root = try setupRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let installer = RuntimeInstaller(root: root)
+    for agent in EngineAgent.allCases {
+        await #expect(throws: FawalyError.self) { _ = try await installer.install(agent) }
+    }
+}
+
+@Test func failedKimiVerificationClearsTheProvisionalConnectedMarker() async throws {
+    let root = try setupRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let configuration = EngineConfiguration(root: root)
+    let service = NativeSignIn(configuration: configuration, execute: { command, _, _ in
+        if command.arguments.first == "provider" { throw FawalyError.invalid("Fixture status failure") }
+        return LoginReply(exitCode: 0, output: "")
+    })
+    await #expect(throws: FawalyError.self) { try await service.signIn(.kimi, onURL: { _ in }) }
+    #expect(!configuration.hasNativeSignIn(.kimi))
 }

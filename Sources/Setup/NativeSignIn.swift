@@ -38,7 +38,12 @@ struct NativeSignIn: Sendable {
         let result = try await execute(command(agent, login: true, region: region), 600, onURL)
         guard result.exitCode == 0 else { throw FawalyError.invalid("Sign-in was not completed. You can retry from this screen.") }
         if agent == .kimi { try configuration.recordNativeSignIn(agent, connected: true) }
-        guard try await verify(agent) else { throw FawalyError.invalid("The service has not confirmed your sign-in yet.") }
+        do {
+            guard try await verify(agent) else { throw FawalyError.invalid("The service has not confirmed your sign-in yet.") }
+        } catch {
+            try? configuration.recordNativeSignIn(agent, connected: false)
+            throw error
+        }
     }
 
     @discardableResult
@@ -47,7 +52,10 @@ struct NativeSignIn: Sendable {
         let connected: Bool
         switch agent {
         case .codex:
-            connected = result.exitCode == 0 && (result.output + result.errorOutput).localizedCaseInsensitiveContains("logged in")
+            let lines = (result.output + "\n" + result.errorOutput).components(separatedBy: .newlines)
+            connected = result.exitCode == 0 && lines.contains {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("logged in")
+            }
         case .kimi:
             let object = try? JSONSerialization.jsonObject(with: Data(result.output.utf8)) as? [String: Any]
             let providers = object?["providers"] as? [String: Any] ?? [:]
@@ -67,8 +75,9 @@ struct NativeSignIn: Sendable {
         defer { close(access) }
         if agent == .kimi {
             try configuration.prepareAuthDirectory(.kimi)
-            let credentials = configuration.nativeAuthDirectory(.kimi).appendingPathComponent("credentials")
-            if FileManager.default.fileExists(atPath: credentials.path) { try FileManager.default.removeItem(at: credentials) }
+            // Remove this app's complete native profile, including any provider keys
+            // or session caches, rather than only one credential subdirectory.
+            try FileManager.default.removeItem(at: configuration.nativeAuthDirectory(.kimi))
             try configuration.recordNativeSignIn(.kimi, connected: false)
             return
         }

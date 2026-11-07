@@ -1,0 +1,13 @@
+title = "Fawaly secret scanning"
+[extend]
+useDefault = true
+
+# Public Ed25519 verification key, not a credential or private signing key.
+# Match this one value in this one source file; never ignore a whole file or commit.
+[[allowlists]]
+description = "Published catalog verification public key"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''(^|/)Sources/Settings/SignedCatalog\.swift$''']
+regexTarget = "secret"
+regexes = ['''^86iVoJtVL5TrOeR\+aUQoz8b3KW8CwL/M/VPi\+uD6fdE=$''']

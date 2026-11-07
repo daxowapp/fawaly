@@ -59,7 +59,7 @@ struct TeamHomeView: View {
         panel.allowsMultipleSelection = false
         panel.prompt = model.text("اسمح للفواعلي", "Allow workers")
         panel.message = model.text("الفواعلي المربوطين هيقدروا يقرأوا ويعدّلوا ملفات الفولدر ده أثناء المهام اللي الأساسي يفوّضها لهم. راجع التعديلات بعد التنفيذ.", "Connected workers can read and edit this folder during tasks delegated by your primary. Review changes after each run.")
-        panel.begin { response in
+        panel.presentInWorkshop { response in
             selectingProject = false
             guard response == .OK, let url = panel.url else { return }
             do { try model.allowProject(url) } catch { model.report(error) }
@@ -83,7 +83,7 @@ struct TeamHomeView: View {
         panel.allowsMultipleSelection = false
         panel.prompt = model.text("ابدأ الجلسة", "Start session")
         panel.message = model.text("اختار مشروعك. الفواعلي هيفتح جلسة الأجنت الأساسي في تطبيق الطرفية تلقائيًا.", "Choose your project. Fawaly opens your primary agent’s session in Terminal automatically.")
-        panel.begin { response in
+        panel.presentInWorkshop { response in
             guard response == .OK, let directory = panel.url else { return }
             do {
                 guard let executable = team.primary.executable() else { throw FawalyError.invalid("Prepare your primary agent in Fawaly setup first.") }

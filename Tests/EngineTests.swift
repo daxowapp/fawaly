@@ -160,6 +160,8 @@ private func engineFixture() throws -> URL {
     #expect(invocation.arguments.contains("--skills-dir"))
     #expect(!invocation.arguments.contains("--auto"))
     #expect(invocation.environment["KIMI_CODE_HOME"] == job.appendingPathComponent("kimi-config").path)
+    #expect(invocation.environment["HOME"] == job.path)
+    #expect(invocation.environment["HOME"] != FileManager.default.homeDirectoryForCurrentUser.path)
     let profile = try String(contentsOf: job.appendingPathComponent("fawaly-worker.md"), encoding: .utf8)
     let allowed = try #require(profile.components(separatedBy: "disallowedTools:").first)
     #expect(allowed.contains("  - Read"))
@@ -199,4 +201,34 @@ private func engineFixture() throws -> URL {
     let root = try engineFixture()
     defer { try? FileManager.default.removeItem(at: root) }
     #expect(try AgentWorker.answer(.kimi, directory: root, output: output) == "KIMI_FIXTURE_OK")
+}
+
+@Test func ordinaryWorkspaceWorkerCanEditSourceButCannotRewriteGitConfiguration() async throws {
+    let root = try engineFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let job = root.appendingPathComponent("job"), project = root.appendingPathComponent("project")
+    try Paths.ensurePrivateDirectory(job)
+    try Paths.ensurePrivateDirectory(project.appendingPathComponent(".git"))
+    let config = project.appendingPathComponent(".git/config")
+    try Data("original".utf8).write(to: config)
+    let invocation = AgentWorker.Invocation(program: URL(fileURLWithPath: "/bin/sh"), arguments: [], environment: [:])
+    let profile = job.appendingPathComponent("worker.sb")
+    try AgentWorker.sandboxProfile(invocation: invocation, directory: job, workspace: project, codexHome: nil)
+        .write(to: profile, atomically: true, encoding: .utf8)
+    let script = "printf source > \"$1/source.txt\" || exit 2; if printf changed > \"$1/.git/config\"; then exit 3; fi; printf protected"
+    let output = try await WorkerProcess.run(program: "/usr/bin/sandbox-exec",
+        arguments: ["-f", profile.path, "/bin/sh", "-c", script, "fixture", project.path],
+        environment: ["PATH": "/usr/bin:/bin"], directory: job, workingDirectory: job, prompt: "Fixture", timeout: 5)
+    #expect(String(decoding: output, as: UTF8.self) == "protected")
+    #expect(try String(contentsOf: config, encoding: .utf8) == "original")
+    #expect(try String(contentsOf: project.appendingPathComponent("source.txt"), encoding: .utf8) == "source")
+}
+
+@Test func workerTimeoutAcceptsNaturalSecondsAndExplicitUnitsWithinTheSameBounds() throws {
+    #expect(try EngineMCP.seconds("900") == 900)
+    #expect(try EngineMCP.seconds("15m") == 900)
+    #expect(try EngineMCP.seconds("1h") == 3600)
+    for invalid in ["0", "3601", "2h", "1.5m", "-5", "999999999999999999999999"] {
+        #expect(throws: FawalyError.self) { try EngineMCP.seconds(invalid) }
+    }
 }

@@ -48,6 +48,11 @@ struct RuntimeInstaller: Sendable {
         guard runtimes.resolvingSymlinksInPath().path == root.resolvingSymlinksInPath().appendingPathComponent("runtimes").path else {
             throw FawalyError.invalid("The service folder could not be prepared.")
         }
+        let target = runtimes.appendingPathComponent(agent.rawValue)
+        if FileManager.default.fileExists(atPath: target.path) {
+            try await verifyExecutable(target, agent: agent, directory: runtimes)
+            return target
+        }
         let staging = runtimes.appendingPathComponent(".install-" + UUID().uuidString, isDirectory: true)
         try Paths.ensurePrivateDirectory(staging)
         defer { try? FileManager.default.removeItem(at: staging) }
@@ -105,15 +110,30 @@ struct RuntimeInstaller: Sendable {
             throw FawalyError.invalid("The downloaded service is not a regular executable.")
         }
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: candidate.path)
-        if agent == .claude {
-            _ = try await run("/usr/bin/codesign", ["--verify", "--strict",
-                "-R=anchor apple generic and certificate leaf[subject.OU] = \"Q6L2SF6YDW\"", candidate.path], at: staging)
-        }
+        try await verifyExecutable(candidate, agent: agent, directory: staging)
         try Task.checkCancellation()
-        let target = runtimes.appendingPathComponent(agent.rawValue)
-        if FileManager.default.fileExists(atPath: target.path) { return target }
+        if FileManager.default.fileExists(atPath: target.path) {
+            try await verifyExecutable(target, agent: agent, directory: runtimes)
+            return target
+        }
         try FileManager.default.moveItem(at: candidate, to: target)
         return target
+    }
+
+    func verifyExecutable(_ file: URL, agent: EngineAgent, directory: URL) async throws {
+        let values = try file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+        guard values.isRegularFile == true, values.isSymbolicLink != true,
+              file.resolvingSymlinksInPath().path == file.path else {
+            throw FawalyError.invalid("The service executable must be a regular file.")
+        }
+        let team: String
+        switch agent {
+        case .codex: team = "2DC432GLL2" // OpenAI OpCo, LLC
+        case .claude: team = "Q6L2SF6YDW" // Anthropic PBC
+        case .kimi: team = "2J9472RW75" // Beijing Moonshot Technology Co., Ltd
+        }
+        _ = try await run("/usr/bin/codesign", ["--verify", "--strict",
+            "-R=anchor apple generic and certificate leaf[subject.OU] = \"" + team + "\"", file.path], at: directory)
     }
 
     private func download(_ url: URL, session: URLSession, size: Int, checksum: String, destination: URL) async throws -> URL {

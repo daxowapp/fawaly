@@ -72,8 +72,8 @@ project_config = config.call('project',
 app_settings = {
   'PRODUCT_NAME' => 'Fawaly Rebuilt', 'PRODUCT_MODULE_NAME' => 'FawalyApp',
   'ENABLE_DEBUG_DYLIB' => 'NO',
-  'PRODUCT_BUNDLE_IDENTIFIER' => 'com.daxow.fawaly.rebuilt', 'MARKETING_VERSION' => '0.6.0',
-  'CURRENT_PROJECT_VERSION' => '7', 'INFOPLIST_KEY_CFBundleDisplayName' => 'Fawaly Rebuilt',
+  'PRODUCT_BUNDLE_IDENTIFIER' => 'com.daxow.fawaly.rebuilt', 'MARKETING_VERSION' => '0.6.1',
+  'CURRENT_PROJECT_VERSION' => '8', 'INFOPLIST_KEY_CFBundleDisplayName' => 'Fawaly Rebuilt',
   'INFOPLIST_KEY_CFBundleIconFile' => 'Fawaly.icns', 'INFOPLIST_KEY_LSApplicationCategoryType' => 'public.app-category.productivity',
   'OTHER_LDFLAGS' => ['$(inherited)', '-lsqlite3'],
   'LD_RUNPATH_SEARCH_PATHS' => ['$(inherited)', '@executable_path/../Frameworks']

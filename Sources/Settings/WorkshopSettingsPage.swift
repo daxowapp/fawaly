@@ -83,6 +83,7 @@ struct WorkshopSettingsPage: View {
                         Text(model.dataDirectory.path).font(.caption.monospaced()).textSelection(.enabled)
                         Button(model.text("إعادة قراءة السجل", "Reload saved data")) { model.load() }
                     }
+                    Link(model.text("موقع الفواعلي وتنزيل الماك", "Fawaly website & Mac download"), destination: URL(string: "https://daxow.com/fawaly")!)
                     Link(model.text("سياسة الخصوصية الأصلية", "Original privacy policy"), destination: URL(string: "https://daxow.com/fawaly/privacy")!)
                     Text(model.text("الفكرة والاسم: أحمد نجدي — Ahmed Nagdy. تطوير الفواعلي: Daxow.", "Original idea and name: Ahmed Nagdy. Fawaly development: Daxow.")).font(.caption).foregroundStyle(.secondary)
                 }
@@ -119,7 +120,7 @@ struct WorkshopSettingsPage: View {
     private func exportPreferences() {
         dialogOpen = true
         let panel = NSSavePanel(); panel.allowedContentTypes = [.json]; panel.nameFieldStringValue = "Fawaly-preferences.json"
-        present(panel) { result in
+        panel.presentInWorkshop { result in
             dialogOpen = false
             guard result == .OK, let file = panel.url else { return }
             do { try PreferencesBackup(state: model.state).write(to: file); feedback = model.text("اتحفظت نسخة الإعدادات.", "Preferences backed up.") } catch { model.report(error) }
@@ -128,7 +129,7 @@ struct WorkshopSettingsPage: View {
     private func importPreferences() {
         dialogOpen = true
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.json]; panel.allowsMultipleSelection = false
-        present(panel) { result in
+        panel.presentInWorkshop { result in
             dialogOpen = false
             guard result == .OK, let file = panel.url else { return }
             do { pendingBackup = try PreferencesBackup.read(file) } catch { model.report(error) }
@@ -137,19 +138,10 @@ struct WorkshopSettingsPage: View {
     private func importCatalog() {
         dialogOpen = true
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.json]; panel.allowsMultipleSelection = false
-        present(panel) { result in
+        panel.presentInWorkshop { result in
             dialogOpen = false
             guard result == .OK, let file = panel.url else { return }
             do { catalog = try SignedCatalog.importFile(file, root: model.dataDirectory); feedback = model.text("الكتالوج الموقّع اتحفظ.", "Signed catalog imported.") } catch { model.report(error) }
         }
     }
-    // A window-owned sheet stays visible in full-screen spaces and keeps cancellation scoped.
-    private func present(_ panel: NSSavePanel, completion: @escaping (NSApplication.ModalResponse) -> Void) {
-        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
-            panel.beginSheetModal(for: window, completionHandler: completion)
-        } else {
-            panel.begin(completionHandler: completion)
-        }
-    }
-
 }

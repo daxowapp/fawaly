@@ -285,6 +285,13 @@
 			"path" = "Sources/Team/WorkerControls.swift";
 			"sourceTree" = "SOURCE_ROOT";
 		};
+		"AA8BBF4EC163EE3B533C9360" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"name" = "WorkshopFilePanel.swift";
+			"path" = "Sources/WorkshopFilePanel.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
 		"873C0735CB45419104CFFCC5" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -536,6 +543,7 @@
 				"205325444F6CC085B6D1619E",
 				"47A70705CD7B1414F35FE192",
 				"D9A610E81BA0982BDB4D8281",
+				"AA8BBF4EC163EE3B533C9360",
 				"873C0735CB45419104CFFCC5",
 				"5FD1408ED9031B826C81016C",
 			);
@@ -660,8 +668,8 @@
 				"PRODUCT_MODULE_NAME" = "FawalyApp";
 				"ENABLE_DEBUG_DYLIB" = "NO";
 				"PRODUCT_BUNDLE_IDENTIFIER" = "com.daxow.fawaly.rebuilt";
-				"MARKETING_VERSION" = "0.6.0";
-				"CURRENT_PROJECT_VERSION" = "7";
+				"MARKETING_VERSION" = "0.6.1";
+				"CURRENT_PROJECT_VERSION" = "8";
 				"INFOPLIST_KEY_CFBundleDisplayName" = "Fawaly Rebuilt";
 				"INFOPLIST_KEY_CFBundleIconFile" = "Fawaly.icns";
 				"INFOPLIST_KEY_LSApplicationCategoryType" = "public.app-category.productivity";
@@ -683,8 +691,8 @@
 				"PRODUCT_MODULE_NAME" = "FawalyApp";
 				"ENABLE_DEBUG_DYLIB" = "NO";
 				"PRODUCT_BUNDLE_IDENTIFIER" = "com.daxow.fawaly.rebuilt";
-				"MARKETING_VERSION" = "0.6.0";
-				"CURRENT_PROJECT_VERSION" = "7";
+				"MARKETING_VERSION" = "0.6.1";
+				"CURRENT_PROJECT_VERSION" = "8";
 				"INFOPLIST_KEY_CFBundleDisplayName" = "Fawaly Rebuilt";
 				"INFOPLIST_KEY_CFBundleIconFile" = "Fawaly.icns";
 				"INFOPLIST_KEY_LSApplicationCategoryType" = "public.app-category.productivity";
@@ -907,6 +915,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "D9A610E81BA0982BDB4D8281";
 		};
+		"29C52FDF8BC1BEC6A53750D5" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "AA8BBF4EC163EE3B533C9360";
+		};
 		"0C322136AA644B9F1C4BFA15" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "873C0735CB45419104CFFCC5";
@@ -959,6 +971,7 @@
 				"2FA5EF405E3B48237747BBD5",
 				"8C8670623852B5F8A307EA98",
 				"A26ED39BD42D690474A9999A",
+				"29C52FDF8BC1BEC6A53750D5",
 				"0C322136AA644B9F1C4BFA15",
 				"645BE6D6DD3966239ED371F5",
 			);

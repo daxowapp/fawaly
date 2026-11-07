@@ -182,7 +182,7 @@ struct EngineMCP: Sendable {
             initialized = true
             result = ["protocolVersion": versions.contains(requested) ? requested : versions[0],
                       "capabilities": ["tools": ["listChanged": false]],
-                      "serverInfo": ["name": "fawaly-rebuilt", "version": "0.6.0"],
+                      "serverInfo": ["name": "fawaly-rebuilt", "version": "0.6.1"],
                       "instructions": "Fawaly manages your team. For a nontrivial user task, proactively read roster_get and use the configured team without requiring the user to direct each step. Use the saved delegation timeout and ordered workers for the task kind (general, code, research, review); no implicit paid fallback. You remain the primary and own the plan, integration, verification, and final decision. Follow advisor.mode: important means consult the assigned advisor before committing to a plan or important decision; on_request means consult only when the user requests advice; off means do not consult. Send relevant user-authorized context with a concise proposed plan and record your decision using consult_decide. Delegate a suitable bounded implementation or investigation to a configured worker when available; send a precise deliverable, allowed files, constraints, and acceptance checks. Supply a short user-facing title in the roster language so the workshop shows a readable task name. Do not delegate the whole task or your final review. A cwd permits edits only in the project the user approved in Fawaly. After the worker returns, independently inspect actual changed files and run appropriate verification, repair findings, then call review with the jobId, decision, your own observed evidence, and optional score. A worker report is a claim, not proof. Never claim a review you did not perform. Use changes_requested or rejected when checks fail. Keep working until the user’s goal is complete. Text-only advice requires no workspace access; workers cannot delegate again."]
         case "ping":
             result = [:]
@@ -285,6 +285,7 @@ struct EngineMCP: Sendable {
 
     static func seconds(_ value: String?) throws -> Int {
         guard let value else { return 120 }
+        if value.utf8.allSatisfy({ (48...57).contains($0) }), let seconds = Int(value), (1...3_600).contains(seconds) { return seconds }
         let units: [Character: Int] = ["s": 1, "m": 60, "h": 3_600]
         guard let unit = value.last, let multiplier = units[unit], let amount = Int(value.dropLast()),
               (1...(3_600 / multiplier)).contains(amount) else {
@@ -303,6 +304,10 @@ struct EngineMCP: Sendable {
         func tool(_ name: String, _ description: String, fields: [String: String] = [:],
                   required: [String] = [], readOnly: Bool = false, openWorld: Bool = false) -> [String: Any] {
             var properties = fields.mapValues { ["type": $0] as [String: Any] }
+            if name == "delegate" {
+                properties["timeout"]?["description"] = "Duration from 1 second to 1 hour, e.g. 90s or 15m. A numeric string is seconds. Omit to use the saved worker timeout."
+                properties["timeout"]?["examples"] = ["90s", "15m", "900"]
+            }
             if name == "consult" { properties["reason"]?["enum"] = ConsultReason.allCases.map(\.rawValue) }
             if name == "review" { properties["decision"]?["enum"] = TeamReview.Decision.allCases.map(\.rawValue) }
             if name == "consult_decide" { properties["decision"]?["enum"] = ["adopted", "partly", "rejected"] }
