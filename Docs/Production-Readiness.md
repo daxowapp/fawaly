@@ -48,7 +48,9 @@ A live provider rejection exposed a stale-readiness case: Claude's saved login s
 
 All navigation sections opened on the installed preview. English/light and selected Arabic/dark screens were inspected; the scene set was checked visually and by distinct bundled-image digests. Saved settings were restored after appearance/language checks. Local saved-login checks reported three profiles available; they do not validate a remote token.
 
-A fresh real comparison after Git-isolation repairs succeeded for Kimi: exactly `CREW-OK` plus one newline, only the expected new file, no changes to the original committed fixture. Claude's provider rejected its previously saved token as revoked (401, reported zero model tokens). Its renewal needs the owner's account choice; a successful new Claude comparison is not claimed. The app surfaced the failed run, retained results and did not charge another provider through fallback.
+Build 26 is installed at the single application location and its executable hash matches the verified universal Release. Claude's revoked session was renewed through official browser sign-in using the owner's selected account. A fresh real comparison then succeeded for both Claude and Kimi: exactly `CREW-OK` plus one newline (8 bytes), identical SHA256, only the expected new file, unchanged baseline files and a clean original Git status. The host independently inspected both snapshots and saved the review decision in the app; no merge occurred. The earlier401failure remains visible in history, with no automatic paid fallback.
+
+The actual Claude Code primary also connected to the installed MCP server, read the saved roster, consulted Codex in one completed round and saved an adopted decision. Both agreed on controlled local-preview acceptance while public distribution remains blocked. That consultation used the host's verification summary; neither model claimed to have reproduced the host's tests independently.
 
 ## Unperformed external acceptance
 
