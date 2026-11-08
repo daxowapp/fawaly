@@ -17,7 +17,7 @@ Reference: [original home](Original-0.4.1-Home.png). Current screenshots are in 
 | Other old provider adapters | API/local adapters implemented with fixture coverage; live cloud accounts require their own keys |
 | Official usage/quota and spending caps | Local API request caps and reported tokens implemented; official subscription quotas/dollar caps unavailable |
 | Assistant model selection | Explicit local lists/aliases; no automatic live discovery or primary-model switching |
-| Preferences, notifications, morning checks | Implemented; notifications and morning checks require app to remain open; OS notification flow not live-tested |
+| Preferences, notifications, morning checks | Implemented; permission and delivery confirmed on this Mac, including foreground presentation; app must remain running. Login-item registration tested and reset; actual reboot not tested. |
 | iCloud synchronization | User-picked folder sync, revision protection and incoming approval; live two-Mac propagation not claimed |
 | Signed catalog | Signature verification, rollback date ordering and verified bundled fallback implemented |
 | Historical menu bar/widget/updater/store distribution | Menu bar/background/launch-at-login and signed updater/packaging implemented; Apple signing/notarization and old widget/Store parity remain |

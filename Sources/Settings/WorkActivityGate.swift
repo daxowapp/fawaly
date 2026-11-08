@@ -1,6 +1,7 @@
 import Foundation
 import Darwin
 import AppKit
+import UserNotifications
 
 /// A lease excludes *new* workers, including MCP processes outside the GUI.
 /// Release it only after the protected configuration/update operation ends.
@@ -19,10 +20,23 @@ final class WorkActivityLease {
 }
 
 @MainActor
-final class WorkshopLifecycle: NSObject, NSApplicationDelegate {
+final class WorkshopLifecycle: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     static weak var model: AppModel?
     static var allowQuitOnce = false
     static var showWorkshop: (() -> Void)?
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        UNUserNotificationCenter.current().delegate = self
+    }
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        [.banner, .list, .sound]
+    }
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse) async {
+        Self.model?.requestedPage = .worklog
+        Self.showWorkshop?()
+        NSApp.activate(ignoringOtherApps: true)
+    }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model = Self.model else { return .terminateNow }

@@ -6,6 +6,8 @@ struct WorkshopSettingsPage: View {
     @EnvironmentObject private var model: AppModel
     @State private var dialogOpen = false
     @State private var requestingNotifications = false
+    @State private var sendingTestNotification = false
+    @State private var notificationFeedback: String?
     @State private var pendingBackup: PreferencesBackup?
     @State private var feedback: String?
     @State private var catalog: SignedCatalog?
@@ -27,7 +29,15 @@ struct WorkshopSettingsPage: View {
                         Text(model.text("داكن", "Dark")).tag("dark")
                     }.pickerStyle(.segmented)
                     Toggle(model.text("نبّهني لما العامل يخلص", "Notify me when a worker finishes"), isOn: Binding(get: { preferences.notifications }, set: setNotifications))
-                        .disabled(requestingNotifications)
+                        .disabled(requestingNotifications || sendingTestNotification)
+                    if preferences.notifications {
+                        HStack {
+                            Button(model.text("جرّب تنبيه", "Send test notification")) { testNotification() }
+                                .disabled(sendingTestNotification)
+                            if sendingTestNotification { ProgressView().controlSize(.small) }
+                        }
+                    }
+                    if let notificationFeedback { Text(notificationFeedback).font(.caption).foregroundStyle(.secondary) }
                     Toggle(model.text("راجع تسجيل الدخول كل صباح", "Check saved sign-ins each morning"), isOn: Binding(get: { preferences.morningCheck }, set: { value in save { $0.morningCheck = value } }))
                     if preferences.morningCheck {
                         Picker(model.text("الساعة", "Time"), selection: Binding(get: { preferences.morningHour }, set: { value in save { $0.morningHour = value } })) {
@@ -120,6 +130,7 @@ struct WorkshopSettingsPage: View {
         do { try model.savePreferences(value) } catch { model.report(error) }
     }
     private func setNotifications(_ enabled: Bool) {
+        notificationFeedback = nil
         if !enabled { save { $0.notifications = false }; return }
         requestingNotifications = true
         Task {
@@ -127,7 +138,20 @@ struct WorkshopSettingsPage: View {
             do {
                 let granted = try await WorkshopNotifications.authorize()
                 save { $0.notifications = granted }
-                if !granted { feedback = model.text("تقدر تسمح بالتنبيهات من إعدادات النظام.", "You can allow notifications in System Settings.") }
+                if !granted { notificationFeedback = model.text("تقدر تسمح بالتنبيهات من إعدادات النظام.", "You can allow notifications in System Settings.") }
+            } catch { model.report(error) }
+        }
+    }
+    private func testNotification() {
+        sendingTestNotification = true
+        notificationFeedback = nil
+        Task {
+            defer { sendingTestNotification = false }
+            do {
+                let delivered = try await WorkshopNotifications.sendTest(arabic: model.arabic)
+                notificationFeedback = delivered
+                    ? model.text("الماك أكّد وصول التنبيه. وضع التركيز ممكن يخفي البانر.", "macOS confirmed delivery. Focus settings may hide the banner.")
+                    : model.text("اترسل الطلب لكن الماك لسه ما أكّدش وصوله. راجع التنبيهات ووضع التركيز في إعدادات النظام.", "Request sent, but macOS has not confirmed delivery. Check Notifications and Focus in System Settings.")
             } catch { model.report(error) }
         }
     }

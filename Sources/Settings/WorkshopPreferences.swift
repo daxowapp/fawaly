@@ -57,9 +57,25 @@ enum WorkshopNotifications {
     static func authorize() async throws -> Bool {
         try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
     }
+    /// Confirm delivery through the public OS API. Focus settings can still hide a banner.
+    static func sendTest(arabic: Bool) async throws -> Bool {
+        let center = UNUserNotificationCenter.current()
+        let content = UNMutableNotificationContent()
+        content.title = arabic ? "الفواعلي" : "Fawaly"
+        content.body = arabic ? "تنبيه تجريبي — تنبيهات الورشة جاهزة." : "Test notification — your workshop notifications are ready."
+        content.sound = .default
+        let identifier = "fawaly-test-" + UUID().uuidString
+        try await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
+        for _ in 0..<20 {
+            if await center.deliveredNotifications().contains(where: { $0.request.identifier == identifier }) { return true }
+            try await Task.sleep(for: .milliseconds(250))
+        }
+        return false
+    }
     static func completed(agent: EngineAgent, needsReview: Bool, failed: Bool = false, arabic: Bool) async {
         let content = UNMutableNotificationContent()
         content.title = arabic ? "الفواعلي" : "Fawaly"
+        content.sound = .default
         // Keep task text and source paths out of lock-screen notifications.
         content.body = failed ? agent.label + (arabic ? " اتوقفت مهمته — افتح الورشة للتفاصيل." : " task stopped — open Fawaly for details.") : agent.label + (arabic ? (needsReview ? " خلص — افتح الورشة للمراجعة." : " خلص المهمة. افتح الورشة للنتيجة.") : (needsReview ? " finished — open Fawaly to review." : " finished — open Fawaly for the result."))
         try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
