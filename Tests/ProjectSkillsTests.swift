@@ -156,3 +156,78 @@ private func skillFixture(_ id: String = "fixture-skill", kind: String = "skill"
     catch { #expect(error is CancellationError) }
     #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
 }
+
+@Test func globalSkillsPreserveUserProfilesAndLeaveProjectsUntouched() async throws {
+    let home = try skillRoot(), project = try skillRoot()
+    defer { try? FileManager.default.removeItem(at: home); try? FileManager.default.removeItem(at: project) }
+    let userRules = "# Existing personal instructions\nKeep Fawaly routing and my own rules.\n"
+    for path in [".claude/CLAUDE.md", ".codex/AGENTS.md"] {
+        let file = home.appendingPathComponent(path)
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(userRules.utf8).write(to: file)
+    }
+    try Data("User MCP configuration".utf8).write(to: home.appendingPathComponent(".codex/config.toml"))
+    try Data("Project rules".utf8).write(to: project.appendingPathComponent("AGENTS.md"))
+    try Data("Home ancestor rules must not change".utf8).write(to: home.appendingPathComponent("AGENTS.md"))
+    let (item, contents) = skillFixture(), store = ProjectSkills(directory: home, scope: .allProjects, home: home)
+    let plan = try store.plan(item, contents: contents, catalog: [item])
+    #expect(plan.scope == .allProjects && plan.warnings.contains { $0.hasPrefix("Global installation") })
+    try await store.install(plan)
+    #expect(store.status(item) == .installed)
+    for path in [".claude/CLAUDE.md", ".codex/AGENTS.md"] { #expect(try String(contentsOf: home.appendingPathComponent(path)).hasPrefix(userRules)) }
+    #expect(try String(contentsOf: home.appendingPathComponent(".codex/config.toml")) == "User MCP configuration")
+    #expect(try String(contentsOf: home.appendingPathComponent("AGENTS.md")) == "Home ancestor rules must not change")
+    #expect(!FileManager.default.fileExists(atPath: home.appendingPathComponent("CLAUDE.md").path))
+    #expect(try String(contentsOf: project.appendingPathComponent("AGENTS.md")) == "Project rules")
+    let projectStore = ProjectSkills(directory: project, home: home)
+    #expect(projectStore.status(item) == .global)
+    let projectPlan = try projectStore.plan(item, contents: contents, catalog: [item])
+    #expect(projectPlan.scope == .project && projectPlan.warnings.contains { $0.hasPrefix("A global skill") })
+    try await projectStore.install(projectPlan)
+    #expect(projectStore.status(item) == .installed && store.status(item) == .installed)
+}
+
+@Test func globalMemoryGuidanceAppliesAcrossProjectsWithoutSharingTheirNotes() async throws {
+    let home = try skillRoot(), first = try skillRoot(), second = try skillRoot()
+    defer { for root in [home, first, second] { try? FileManager.default.removeItem(at: root) } }
+    let (item, contents) = skillFixture("global-memory-fixture", tags: ["memory"])
+    let global = ProjectSkills(directory: home, scope: .allProjects, home: home)
+    try await global.install(global.plan(item, contents: contents, catalog: [item]))
+    for (root, note) in [(home, "Do not inherit global notes"), (first, "First project fact"), (second, "Second project fact")] {
+        try Data(note.utf8).write(to: root.appendingPathComponent("findings.md"))
+    }
+    let a = ProjectSkillsContext.enrich("Brief", workspace: first, catalog: [item], home: home)
+    let b = ProjectSkillsContext.enrich("Brief", workspace: second, catalog: [item], home: home)
+    #expect(a.contains("Only test fixture instructions") && b.contains("Only test fixture instructions"))
+    #expect(a.contains("First project fact") && !a.contains("Second project fact"))
+    #expect(b.contains("Second project fact") && !b.contains("First project fact"))
+    #expect(!a.contains("Do not inherit global notes") && !b.contains("Do not inherit global notes"))
+    #expect(ProjectSkillsContext.enrich("Brief", workspace: nil, catalog: [item], home: home) == "Brief")
+}
+
+@Test func scopeCannotChangeAfterPreviewAndGlobalTemplateUsesNativePaths() async throws {
+    let home = try skillRoot(), project = try skillRoot()
+    defer { try? FileManager.default.removeItem(at: home); try? FileManager.default.removeItem(at: project) }
+    let (item, contents) = skillFixture("global-template-fixture", kind: "template")
+    let local = ProjectSkills(directory: project, home: home), global = ProjectSkills(directory: home, scope: .allProjects, home: home)
+    let localPlan = try local.plan(item, contents: contents, catalog: [item])
+    await #expect(throws: FawalyError.self) { try await global.install(localPlan) }
+    #expect(try FileManager.default.contentsOfDirectory(atPath: home.path).isEmpty)
+    let globalPlan = try global.plan(item, contents: contents, catalog: [item])
+    #expect(globalPlan.receipt.blocks.map(\.path) == [".claude/CLAUDE.md", ".codex/AGENTS.md"])
+    await #expect(throws: FawalyError.self) { try await ProjectSkills(directory: home, home: home).install(globalPlan) }
+    try await global.install(globalPlan)
+    #expect(global.status(item) == .installed)
+    #expect(!FileManager.default.fileExists(atPath: home.appendingPathComponent("AGENTS.md").path))
+}
+
+@Test func olderProjectReceiptsRemainRecognizedAfterScopeSupport() async throws {
+    let root = try skillRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let (item, contents) = skillFixture(), store = ProjectSkills(directory: root)
+    try await store.install(store.plan(item, contents: contents, catalog: [item]))
+    let file = root.appendingPathComponent(".fawaly/skills/receipts/fixture-skill.json")
+    var json = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as! [String: Any]
+    json.removeValue(forKey: "scope")
+    try JSONSerialization.data(withJSONObject: json).write(to: file)
+    #expect(store.status(item) == .installed)
+}
