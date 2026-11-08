@@ -105,6 +105,12 @@ struct APIWorker: Sendable {
         for _ in 0..<assistant.maxRounds {
             try Self.checkStop(stopFile)
             var body: [String: Any] = ["model": assistant.model, "messages": messages, "max_tokens": 4096, "stream": false]
+            // M3.1 Flash defaults to max thinking, which can exhaust this bounded
+            // shared thinking/answer budget. Keep the cap and use balanced effort.
+            if assistant.agent == .minimax, assistant.model == "MiniMax-M3.1-Flash" {
+                if assistant.format == .openAI { body["reasoning_effort"] = "medium" }
+                else { body["output_config"] = ["effort": "medium"] }
+            }
             if assistant.format == .anthropic { body["system"] = instruction }
             if files != nil { body["tools"] = tools }
             if assistant.agent == .openrouter { body["provider"] = ["allow_fallbacks": false, "require_parameters": true] }
@@ -124,7 +130,9 @@ struct APIWorker: Sendable {
                 try APIUsage(root: root).record(assistant.agent, input: input, output: output)
             }
             if assistant.format == .openAI {
-                guard let message = (reply["choices"] as? [[String: Any]])?.first?["message"] as? [String: Any] else { throw FawalyError.invalid("No assistant response was returned.") }
+                let choice = (reply["choices"] as? [[String: Any]])?.first
+                guard choice?["finish_reason"] as? String != "length" else { throw Self.outputLimit() }
+                guard let message = choice?["message"] as? [String: Any] else { throw FawalyError.invalid("No assistant response was returned.") }
                 let calls = message["tool_calls"] as? [[String: Any]] ?? []
                 if calls.isEmpty { return try Self.answer(message["content"] as? String) }
                 guard let files, calls.count <= 16 else { throw FawalyError.invalid("Unexpected or excessive tool calls.") }
@@ -138,6 +146,7 @@ struct APIWorker: Sendable {
                     messages.append(["role": "tool", "tool_call_id": id, "content": Self.execute(name, arguments: arguments, files: files)])
                 }
             } else {
+                guard reply["stop_reason"] as? String != "max_tokens" else { throw Self.outputLimit() }
                 guard let content = reply["content"] as? [[String: Any]] else { throw FawalyError.invalid("No assistant content was returned.") }
                 let calls = content.filter { $0["type"] as? String == "tool_use" }
                 if calls.isEmpty { return try Self.answer(content.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }.joined(separator: "\n")) }
@@ -174,6 +183,9 @@ struct APIWorker: Sendable {
     private static func answer(_ text: String?) throws -> String {
         guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf8.count <= 512 * 1024 else { throw FawalyError.invalid("No usable final response was returned.") }
         return text
+    }
+    private static func outputLimit() -> FawalyError {
+        .invalid("The service reached its reply limit before finishing. Any earlier edits need review. Shorten or split the task before trying again. No automatic retry or paid fallback was sent.")
     }
     private static func execute(_ name: String, arguments: [String: Any], files: APIWorkspace) -> String {
         do {

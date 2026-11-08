@@ -67,3 +67,13 @@ A second real Claude source review consulted Codex through the installed MCP ser
 CI now uses explicit standard macOS 26 ARM and Intel runners and checks their actual architecture before testing. A passing matrix validates native test execution on those hosted VMs, not a physical Intel desktop, the signed release artifact, or a clean Gatekeeper installation. [GitHub's runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) documents these labels.
 
 The unauthenticated OpenRouter model catalog returned 298 eligible models in the installed app. Its real account grant was prepared with an explicit one-dollar total cap and is awaiting the owner's action-time approval; no key or live request was created. Ollama and LM Studio are absent from this Mac and their standard loopback endpoints are not running. Their real model execution remains unverified; isolated adapter tests are not described as live model tests.
+
+## Truncated-response and animation follow-up — build 28
+
+A synthetic regression demonstrated that OpenAI `finish_reason: length` and Anthropic `stop_reason: max_tokens` could be accepted as successful text; a cut-off tool response could also execute file writes and send another round. The worker now rejects those responses before tool execution or final-answer acceptance, with an explicit incomplete-result message and no retry or fallback. Prior edits remain available for independent review. The regression and the full suite passed locally (157 tests).
+
+MiniMax M3.1 Flash now uses medium thinking effort with the existing 4,096-token shared cap; no larger automatic generation budget was introduced. The vendor documents that max effort is the default and thinking consumes this cap, sometimes leaving an empty final answer. This is a plausible explanation of the earlier live empty reply, not a captured provider diagnosis. [MiniMax protocol reference](https://platform.minimax.io/docs/api-reference/text-openai-api).
+
+The installed interface also reproduced a mascot disappearing after appearance/activation changes: a paused animation timeline could retain an old transparent entrance frame. Resting scenes now render from the current time outside the paused timeline. This changes decorative rendering only.
+
+Build 27's full 156-test suite passed on native hosted ARM64 and x86_64 macOS 26 runners, with explicit host-architecture assertions, as did the public-history secret scan: [CI run](https://github.com/daxowapp/fawaly/actions/runs/42526939283). The final build 28 matrix is tracked separately below when completed.

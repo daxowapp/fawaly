@@ -37,6 +37,29 @@ private func apiProfile(format: APIAssistant.Format = .openAI) -> APIAssistant {
                  endpoint: URL(string: format == .openAI ? "https://fixture.invalid/v1/chat/completions" : "https://fixture.invalid/v1/messages")!, model: "fixture-model", format: format)
 }
 
+@Test func truncatedProviderRepliesNeverCompleteOrExecuteToolCalls() async throws {
+    let root = try apiRoot(), project = root.appendingPathComponent("project")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try Paths.ensurePrivateDirectory(project)
+    let arguments = String(decoding: try JSONSerialization.data(withJSONObject: ["path": "partial.txt", "content": "must not be written", "expected_sha256": ""]), as: UTF8.self)
+    let fixtures: [(APIAssistant.Format, [String: Any])] = [
+        (.openAI, ["choices": [["finish_reason": "length", "message": ["content": "partial answer"]]]]),
+        (.openAI, ["choices": [["finish_reason": "length", "message": ["tool_calls": [["id": "cut-call", "function": ["name": "write_file", "arguments": arguments]]]]]]]),
+        (.anthropic, ["stop_reason": "max_tokens", "content": [["type": "text", "text": "partial answer"]]])
+    ]
+    for (format, reply) in fixtures {
+        let fixture = APIFixture([reply])
+        var worker = APIWorker(root: root)
+        worker.credential = { _ in "fixture-key" }
+        worker.transport = { try await fixture.send($0) }
+        await #expect(throws: FawalyError.self) {
+            try await worker.run(apiProfile(format: format), prompt: "fixture", workspace: project, timeout: 3)
+        }
+        #expect(await fixture.requests.count == 1)
+        #expect(!FileManager.default.fileExists(atPath: project.appendingPathComponent("partial.txt").path))
+    }
+}
+
 @Test func deniedCredentialEndsTheJobWithoutChargingOrFallingBack() async throws {
     let root = try apiRoot()
     defer { try? FileManager.default.removeItem(at: root) }

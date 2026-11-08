@@ -60,8 +60,16 @@ struct WorkshopIllustration: View {
             Circle().strokeBorder(Workshop.yellow.opacity(0.22), style: StrokeStyle(lineWidth: 1, dash: [4, 5]))
                 .frame(width: 120, height: 120).offset(x: 15, y: -3)
             if let image {
-                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !running)) { timeline in
-                    scene(image: image, now: timeline.date)
+                Group {
+                    if running {
+                        TimelineView(.animation(minimumInterval: 1.0 / 30)) { timeline in
+                            scene(image: image, now: timeline.date)
+                        }
+                    } else {
+                        // A paused timeline can retain an old entrance frame after
+                        // appearance/activation changes and leave the mascot invisible.
+                        scene(image: image, now: Date())
+                    }
                 }
                 .rotationEffect(.degrees(!gate.allowsMotion ? 0 : hovered ? -3 : 0))
                 .offset(y: !gate.allowsMotion ? 0 : hovered ? -4 : 0)
