@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 extension AppPage {
-    var artwork: String { [.hires, .skills].contains(self) ? "discovery" : self == .connection ? "contractors" : self == .rules ? "shift" : rawValue }
+    var artwork: String { [.hires, .skills, .daily].contains(self) ? "discovery" : self == .connection ? "contractors" : self == .rules ? "shift" : rawValue }
     var hasArtwork: Bool { self != .home && self != .advisor }
 }
 
@@ -203,7 +203,7 @@ struct WorkshopGlyph: View {
         case .contractors:
             rect(root, 4, 12, 24, 15, fill: true); rect(moved(0, -3 * b), 11, 6, 10, 6)
             line(root, [.init(x: 4, y: 18), .init(x: 28, y: 18)]); rect(root, 13, 16, 6, 6, radius: 1)
-        case .worklog:
+        case .worklog, .daily:
             rect(root, 6, 4, 21, 25, fill: true)
             line(root, [.init(x: 11, y: 5), .init(x: 11, y: 28)])
             for (index, y) in [11.0, 16.0, 21.0].enumerated() {

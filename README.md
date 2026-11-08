@@ -1,13 +1,13 @@
 <div align="center">
 
-# الفواعلي · Fawaly
+# Sudo Interns · الفواعلي
 
-**وكيلك يخطّط. الفواعلي تنفّذ.**<br>
-**Your agent plans. Fawaly executes.**
+**Overprompted. Underpaid.**<br>
+**الكبير يخطّط. والفواعلي يشيلوا الشغل.**
 
-A free, open-source macOS workshop for your AI coding team.
+A free, open-source macOS workshop for your AI coding crew. Your primary leads, an advisor questions the plan, and the interns do the lifting. Hard hats included. Independent review required.
 
-[موقع الفواعلي وتنزيل الماك](https://daxow.com/fawaly) · [العربية](#العربية) · [Get started](#get-started) · [Contribute](CONTRIBUTING.md) · [License](LICENSE)
+[Website & Mac download](https://daxow.com/fawaly) · [العربية](#العربية) · [Get started](#get-started) · [Contribute](CONTRIBUTING.md) · [License](LICENSE)
 
 [![macOS build and secret scan](https://github.com/daxowapp/fawaly/actions/workflows/macos.yml/badge.svg)](https://github.com/daxowapp/fawaly/actions/workflows/macos.yml)
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black)
@@ -16,11 +16,13 @@ A free, open-source macOS workshop for your AI coding team.
 
 </div>
 
-![Fawaly workshop](Docs/Screenshots/workshop-ar.png)
+![Sudo Interns — your AI coding crew](Docs/Screenshots/workshop-en.png)
 
-Keep working in your usual **Codex or Claude Code**. Fawaly connects an independent advisor and supporting workers through MCP. Your primary agent owns the plan, delegates bounded work, inspects the actual changes, runs checks, and records its decision.
+**English name: Sudo Interns. Arabic name: الفواعلي.** The name is a developer joke; the app does not grant administrator privileges to its assistants.
 
-**The official Fawaly app is free and will remain free.** No Fawaly subscription, paid unlocks, or artificial feature tiers. AI provider accounts, subscriptions, and usage are separate and subject to each provider’s terms. Fawaly does not make paid AI services free.
+Keep working in your usual **Codex or Claude Code**. Sudo Interns connects an independent advisor and supporting workers through MCP. Your primary agent owns the plan, delegates bounded work, inspects the actual changes, runs checks, and records its decision.
+
+**The official app is free and will remain free.** No app subscription, paid unlocks, or artificial feature tiers. AI provider accounts, subscriptions, and usage are separate and subject to each provider’s terms. The interns are free; their providers still keep a tab.
 
 > **Preview:** this is a working reconstruction of Fawaly, not a claim of complete historical feature parity. The current source is buildable and tested locally. A production-signed, notarized public installer is not available yet. See [verification and limits](Docs/Verification.md) and the [public source security review](Docs/Security-Review.md).
 
@@ -57,7 +59,8 @@ For substantial tasks, the team instructions ask the primary to consult accordin
 
 ## Inside the workshop
 
-- Native SwiftUI interface, Arabic/English, mirrored layout, light/dark/system appearance, and the original illustrated workshop identity.
+- Native SwiftUI interface, English by default for new installations, Arabic/English switching, mirrored layout, light/dark/system appearance, and the original illustrated workshop identity. Existing language choices stay saved.
+- **Developer Daily:** original publisher headlines, publication dates, source/topic filters, a local reading list, and practical prompts to review an idea with your crew. Refreshes once every 24 hours when opened; no automatic paid AI calls. [Sources, privacy and limits](Docs/Developer-Daily.md).
 - Browser-based native account setup, connection checks, cancellation, sign-out, and saved team roles.
 - Advisor policy, rounds and timeouts; ordered workers by task type; a 15-minute default worker timeout.
 - Searchable tasks and reviews, live progress, stop controls, independent review evidence, and optional primary ratings.
@@ -71,6 +74,10 @@ Configured API/local assistants appear in **Your accounts** alongside native acc
 
 The **Skills** page offers nine curated skills/templates with source credit, declared licenses, dated GitHub popularity, pinned revisions and per-file checksums. Each installation asks **all local projects** or **a specific project**, with a folder chooser. It previews the scope, overlaps and executable hooks before installation, detects existing skills, and appends attributed instruction sections while preserving older content and MCP/hook settings. Planning with Files provides on-disk project context; globally available skills still keep each project's memory separate. [Skills, scopes, compatibility and memory limits](Docs/Skills.md).
 
+![Developer Daily — original sources and practical crew briefs](Docs/Screenshots/developer-daily-en.png)
+
+Daily news is a reading list, not an instruction to install everything that moves. **Brief the crew** prepares a source-review request for your usual agent; it does not silently spend your AI credits.
+
 Services include official account/key or local setup links. OpenRouter supports browser PKCE sign-in or a manual key, plus a searchable live catalog of text/tool-capable models. OAuth-derived keys can be saved without a paid generation probe; Save & test is a separate explicit action. Requests use the user's OpenRouter credits, a selected model, and `provider.allow_fallbacks=false`; unrelated website subscriptions are not imported. See [OpenRouter OAuth](https://openrouter.ai/docs/guides/overview/auth/oauth) and [model catalog](https://openrouter.ai/docs/api/api-reference/models/get-models).
 
 Subscription keys are provider-specific: MiniMax's M Plan/Coding Plan key is separate from its pay-as-you-go key ([official guide](https://platform.minimax.io/docs/m-plan/quickstart)). Z.ai's GLM Coding Plan provides a key under Personal Coding Plan → Plan Overview, but [restricts subscription use to supported tools](https://docs.z.ai/devpack/tool/others), including Claude Code and ZCode. Fawaly is not currently listed. Its direct Z.AI preset uses the standard, separately billed OpenAI-compatible API endpoint; it does not claim GLM subscription support or modify the user's Claude Code provider settings. Existing saved endpoints are preserved.
@@ -79,6 +86,8 @@ Subscription keys are provider-specific: MiniMax's M Plan/Coding Plan key is sep
 Official subscription balances and dollar spending caps are unavailable. There is no automatic paid retry/fallback. Compatible APIs can list their models; Anthropic-compatible services keep the explicitly configured ID. New API adapters have fixture coverage; live cloud-provider verification requires the user’s keys and is not claimed. Complete old app/widget parity is not claimed. Account availability and local job counts are not quota measurements.
 
 ## Build and test
+
+For repeat local development, [replace the one installed app](Docs/Development.md) instead of keeping old launchable copies.
 
 Requires macOS 14+, full Xcode, and acceptance of Xcode’s license. Tested locally with Xcode 27.2. Sparkle 2.10.1 is pinned through Swift Package Manager; Xcode downloads the official binary package.
 

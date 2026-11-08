@@ -61,7 +61,7 @@ enum WorkshopNotifications {
     static func sendTest(arabic: Bool) async throws -> Bool {
         let center = UNUserNotificationCenter.current()
         let content = UNMutableNotificationContent()
-        content.title = arabic ? "الفواعلي" : "Fawaly"
+        content.title = arabic ? "الفواعلي" : WorkshopCopy.englishName
         content.body = arabic ? "تنبيه تجريبي — تنبيهات الورشة جاهزة." : "Test notification — your workshop notifications are ready."
         content.sound = .default
         let identifier = "fawaly-test-" + UUID().uuidString
@@ -74,10 +74,10 @@ enum WorkshopNotifications {
     }
     static func completed(agent: EngineAgent, needsReview: Bool, failed: Bool = false, arabic: Bool) async {
         let content = UNMutableNotificationContent()
-        content.title = arabic ? "الفواعلي" : "Fawaly"
+        content.title = arabic ? "الفواعلي" : WorkshopCopy.englishName
         content.sound = .default
         // Keep task text and source paths out of lock-screen notifications.
-        content.body = failed ? agent.label + (arabic ? " اتوقفت مهمته — افتح الورشة للتفاصيل." : " task stopped — open Fawaly for details.") : agent.label + (arabic ? (needsReview ? " خلص — افتح الورشة للمراجعة." : " خلص المهمة. افتح الورشة للنتيجة.") : (needsReview ? " finished — open Fawaly to review." : " finished — open Fawaly for the result."))
+        content.body = failed ? agent.label + (arabic ? " اتوقفت مهمته — افتح الورشة للتفاصيل." : " task stopped — open Sudo Interns for details.") : agent.label + (arabic ? (needsReview ? " خلص — افتح الورشة للمراجعة." : " خلص المهمة. افتح الورشة للنتيجة.") : (needsReview ? " finished — open Sudo Interns to review." : " finished — open Sudo Interns for the result."))
         try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
     }
 }

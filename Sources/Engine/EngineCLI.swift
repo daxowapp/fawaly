@@ -189,10 +189,12 @@ struct EngineMCP: Sendable {
         case "initialize":
             let versions = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]
             let requested = params["protocolVersion"] as? String ?? ""
+            let arabic = (try? WorkshopStore(root: bridge.configuration.root).load().arabic) ?? false
+            let displayName = WorkshopCopy.integrationName(arabic: arabic)
             initialized = true
             result = ["protocolVersion": versions.contains(requested) ? requested : versions[0],
                       "capabilities": ["tools": ["listChanged": false]],
-                      "serverInfo": ["name": "fawaly-rebuilt", "version": "0.7.0"],
+                      "serverInfo": ["name": displayName, "title": displayName, "version": "0.7.0"],
                       "instructions": "Fawaly manages your team. For a nontrivial user task, proactively read roster_get and use the configured team without requiring the user to direct each step. Use the saved delegation timeout and ordered workers for the task kind (general, code, research, review); no implicit paid fallback. You remain the primary and own the plan, integration, verification, and final decision. Follow advisor.mode: important means consult the assigned advisor before committing to a plan or important decision; on_request means consult only when the user requests advice; off means do not consult. Send relevant user-authorized context with a concise proposed plan and record your decision using consult_decide. Delegate a suitable bounded implementation or investigation to a configured worker when available; send a precise deliverable, allowed files, constraints, and acceptance checks. Supply a short user-facing title in the roster language so the workshop shows a readable task name. Do not delegate the whole task or your final review. A cwd permits edits only in the project the user approved in Fawaly. After the worker returns, independently inspect actual changed files and run appropriate verification, repair findings, then call review with the jobId, decision, your own observed evidence, and optional score. A worker report is a claim, not proof. Never claim a review you did not perform. Use changes_requested or rejected when checks fail. Keep working until the user’s goal is complete. Text-only advice requires no workspace access; workers cannot delegate again."]
         case "ping":
             result = [:]

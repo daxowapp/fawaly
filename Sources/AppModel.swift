@@ -67,7 +67,7 @@ final class AppModel: ObservableObject {
         return RosterView(advisors: state.advisors, providers: providers)
     }
 
-    func text(_ ar: String, _ en: String) -> String { arabic ? ar : en }
+    func text(_ ar: String, _ en: String) -> String { WorkshopCopy.text(ar, en, arabic: arabic) }
     func name(_ id: String) -> String { roster.providers[id]?.name ?? id }
     func models(_ id: String) -> [String] { roster.providers[id]?.models ?? [] }
 

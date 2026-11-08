@@ -101,7 +101,7 @@ struct WorkItem: Codable, Identifiable, Equatable, Sendable {
 }
 
 struct WorkshopState: Codable, Equatable {
-    var arabic = true
+    var arabic = false
     var advisors = AdvisorSettings()
     var work: [WorkItem] = []
     var provider: EndpointSettings?

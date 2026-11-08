@@ -35,14 +35,15 @@ struct FawalyApp: App {
     }
 
     var body: some Scene {
-        Window("الفواعلي · Fawaly", id: "workshop") {
+        Window(model.arabic ? "الفواعلي" : "Sudo Interns", id: "workshop") {
             WorkshopWindow()
                 .environmentObject(model)
                 .frame(minWidth: 830, minHeight: 620)
+                .navigationTitle(model.arabic ? "الفواعلي" : WorkshopCopy.englishName)
         }
         .defaultSize(width: 1060, height: 760)
         .commands { WorkshopWindowCommands(model: model) }
-        MenuBarExtra("الفواعلي", systemImage: "hammer.fill") {
+        MenuBarExtra(model.arabic ? "الفواعلي" : "Sudo Interns", systemImage: "hammer.fill") {
             WorkshopMenu().environmentObject(model)
         }
 
@@ -124,6 +125,7 @@ struct WorkshopWindow: View {
                                 case .contest: ComparisonPage()
                                 case .contractors: services
                                 case .skills: SkillsPage()
+                                case .daily: DeveloperDailyPage()
                                 case .settings: settings
                                 case .usage: UsagePage()
                                 default: home
@@ -176,6 +178,7 @@ struct WorkshopWindow: View {
         case .rules: subtitle = model.text("خلّي فريقك يعرف إمتى يستشير ومين يبدأ كل نوع شغل.", "Decide when to consult and who takes each type of task.")
         case .hires: subtitle = model.text("افحص بيانات الموديلات الرسمية المحفوظة محليًا.", "Inspect locally cached official model data.")
         case .skills: subtitle = model.text("سكيلز وذاكرة مشروع وقوالب تعليمات، مع الكريدت وفحص التداخل قبل التثبيت.", "Project skills, memory and instruction templates, with credit and overlap checks before installation.")
+        case .daily: subtitle = model.text("جديد أدوات البرمجة والوكلاء، من المصدر إلى خطوة تقدر تجربها.", "Fresh tools and agent news. Original sources, practical next steps.")
         case .contest: subtitle = model.text("نفس المهمة في نسختين منفصلتين، والمراجعة قبل اختيار النتيجة.", "The same task in separate snapshots, reviewed before choosing a result.")
         case .usage: subtitle = model.text("أعداد المهام والاستشارات المحفوظة على الماك.", "Counts of tasks and consultations saved on this Mac.")
         case .settings: subtitle = model.text("اللغة وتخزين الورشة.", "Workshop language and storage.")
@@ -192,6 +195,7 @@ struct WorkshopWindow: View {
                 homeLink(.contractors, subtitle: model.text("حساباتك الأصلية ومساعدوك", "Your native accounts and assistants"))
                 homeLink(.rules, subtitle: model.text("ترتيب المساعدين وسياسة المستشار", "Worker order and advisor policy"))
                 homeLink(.advisor, subtitle: model.text("رأي مستقل وقرار من الأساسي", "Independent advice, primary decision"))
+                homeLink(.daily, subtitle: model.text("أخبار للمبرمجين وخطوات عملية كل يوم", "Developer news and practical next steps"))
             }
             WorkshopCard {
                 VStack(alignment: .leading, spacing: 12) {

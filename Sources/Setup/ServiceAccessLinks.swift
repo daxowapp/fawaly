@@ -5,7 +5,7 @@ struct ServiceAccessLinks: View {
     let arabic: Bool
     var region = KimiRegion.global
     var endpoint: URL? = nil
-    private func text(_ ar: String, _ en: String) -> String { arabic ? ar : en }
+    private func text(_ ar: String, _ en: String) -> String { WorkshopCopy.text(ar, en, arabic: arabic) }
     var body: some View {
         HStack {
             ForEach(links, id: \.url) { item in

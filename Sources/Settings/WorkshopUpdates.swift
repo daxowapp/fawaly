@@ -28,7 +28,7 @@ final class WorkshopUpdates: NSObject, ObservableObject, SPUUpdaterDelegate {
 
     func check(arabic: Bool) {
         guard Self.signedBaseline else {
-            message = arabic ? "نسخة الاسترجاع دي محلية. أول نسخة موثّقة هتتنزّل من موقع الفواعلي؛ بعدها التحديثات الموقّعة هتبقى من هنا." : "This recovery build is local. Install the first notarized release from the Fawaly website; signed updates will then be available here."
+            message = arabic ? "نسخة الاسترجاع دي محلية. أول نسخة موثّقة هتتنزّل من موقع الفواعلي؛ بعدها التحديثات الموقّعة هتبقى من هنا." : "This recovery build is local. Install the first notarized release from the Sudo Interns website; signed updates will then be available here."
             return
         }
         guard !checking else { return }
@@ -55,7 +55,7 @@ final class WorkshopUpdates: NSObject, ObservableObject, SPUUpdaterDelegate {
 
     func updaterShouldPromptForPermissionToCheck(forUpdates updater: SPUUpdater) -> Bool { false }
     func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
-        guard canBegin(), lease != nil else { throw FawalyError.invalid("Finish active work before updating Fawaly.") }
+        guard canBegin(), lease != nil else { throw FawalyError.invalid("Finish active work before updating Sudo Interns.") }
     }
     func updater(_ updater: SPUUpdater, shouldProceedWithUpdate updateItem: SUAppcastItem, updateCheck: SPUUpdateCheck) throws {
         guard lease != nil else { throw FawalyError.invalid("The update no longer has exclusive engine access.") }
@@ -81,13 +81,13 @@ struct WorkshopUpdatesView: View {
     let arabic: Bool
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(arabic ? "تحديثات الفواعلي" : "Fawaly updates").font(.headline)
+            Text(arabic ? "عِدّة جديدة للفواعلي" : "Fresh tools for Sudo Interns").font(.headline)
             Text((Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") + " · " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "")).font(.caption).foregroundStyle(.secondary)
-            Text(arabic ? "التحديثات موقّعة، وباختيارك. الشغل لازم يخلص قبل بدء التحديث، والمهام الجديدة بتستنى لحد ما تقفل نافذته أو تعيد تشغيل الفواعلي." : "Updates are signed and started by you. Finish work before checking; new work waits until you dismiss the update or restart Fawaly.").font(.caption).foregroundStyle(.secondary)
+            Text(arabic ? "التحديثات موقّعة، وباختيارك. الشغل لازم يخلص قبل بدء التحديث، والمهام الجديدة بتستنى لحد ما تقفل نافذته أو تعيد تشغيل الفواعلي." : "Updates are signed and started by you. Finish work before checking; new work waits until you dismiss the update or restart Sudo Interns.").font(.caption).foregroundStyle(.secondary)
             Button(arabic ? "افحص التحديثات" : "Check for updates") { updates.check(arabic: arabic) }.disabled(updates.checking)
-            if updates.installationPending { Text(arabic ? "التحديث جاهز. أعد تشغيل الفواعلي لإكماله." : "An update is ready. Restart Fawaly to finish.").font(.caption) }
+            if updates.installationPending { Text(arabic ? "التحديث جاهز. أعد تشغيل الفواعلي لإكماله." : "An update is ready. Restart Sudo Interns to finish.").font(.caption) }
             if let message = updates.message { Text(message).font(.caption).textSelection(.enabled) }
-            Link(arabic ? "موقع الفواعلي والتنزيل" : "Fawaly website & download", destination: URL(string: "https://daxow.com/fawaly")!)
+            Link(arabic ? "موقع الفواعلي والتنزيل" : "Sudo Interns website & download", destination: URL(string: "https://daxow.com/fawaly")!)
         }
     }
 }

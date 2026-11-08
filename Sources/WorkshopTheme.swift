@@ -2,10 +2,10 @@ import AppKit
 import SwiftUI
 
 enum AppPage: String, CaseIterable, Identifiable {
-    case home, shift, advisor, contractors, worklog, usage, settings, hires, contest, connection, rules, skills
+    case home, shift, advisor, contractors, worklog, usage, settings, hires, contest, connection, rules, skills, daily
 
     var id: Self { self }
-    static let navigation: [Self] = [.home, .connection, .rules, .advisor, .contractors, .skills, .worklog, .usage, .hires, .contest, .settings]
+    static let navigation: [Self] = [.home, .daily, .connection, .rules, .advisor, .contractors, .skills, .worklog, .usage, .hires, .contest, .settings]
 
     func title(_ arabic: Bool) -> String {
         switch self {
@@ -20,6 +20,7 @@ enum AppPage: String, CaseIterable, Identifiable {
         case .settings: arabic ? "الإعدادات" : "Settings"
         case .hires: arabic ? "موديلات المساعدين" : "Assistant models"
         case .skills: "Skills"
+        case .daily: arabic ? "أخبار المبرمجين اليومية" : "Developer Daily"
         case .contest: arabic ? "مقارنة المساعدين" : "Compare assistants"
         }
     }
@@ -50,7 +51,13 @@ struct SectionHeader: View {
                 Text(subtitle).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
-            WorkshopIllustration(page: page == .home ? .shift : page == .advisor ? .contractors : page)
+            if page == .daily {
+                Image(systemName: "newspaper").font(.system(size: 32)).foregroundStyle(Workshop.yellow)
+                    .padding(14).background(Workshop.yellow.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+                    .accessibilityHidden(true)
+            } else {
+                WorkshopIllustration(page: page == .home ? .shift : page == .advisor ? .contractors : page)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

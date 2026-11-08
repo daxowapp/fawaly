@@ -55,7 +55,7 @@ struct APIServiceEditor: View {
         guard let saved else { return false }
         return key.isEmpty && URL(string: endpoint.trimmingCharacters(in: .whitespacesAndNewlines)) == saved.endpoint && model.trimmingCharacters(in: .whitespacesAndNewlines) == saved.model && format == saved.format
     }
-    private func text(_ ar: String, _ en: String) -> String { arabic ? ar : en }
+    private func text(_ ar: String, _ en: String) -> String { WorkshopCopy.text(ar, en, arabic: arabic) }
     private var keyPlaceholder: String {
         if hasSavedKey { return text("مفتاح جديد اختياري؛ المحفوظ يفضل في Keychain", "Optional replacement key; saved key stays in Keychain") }
         if agent == .minimax { return text("مفتاح اشتراك MiniMax أو خدمة API", "MiniMax subscription or API key") }

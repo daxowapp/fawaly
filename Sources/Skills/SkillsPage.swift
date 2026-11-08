@@ -184,7 +184,7 @@ private struct SkillScopeSheet: View {
         self.item = item; self.arabic = arabic; self.cancel = cancel; self.selected = selected
         _scope = State(initialValue: initialScope); _directory = State(initialValue: initialDirectory)
     }
-    private func text(_ ar: String, _ en: String) -> String { arabic ? ar : en }
+    private func text(_ ar: String, _ en: String) -> String { WorkshopCopy.text(ar, en, arabic: arabic) }
     private var existing: ProjectSkills.Status {
         guard let target = scope == .allProjects ? FileManager.default.homeDirectoryForCurrentUser : directory else { return .absent }
         return ProjectSkills(directory: target, scope: scope).status(item)
@@ -235,7 +235,7 @@ private struct SkillReviewSheet: View {
     let cancel: () -> Void
     let install: () -> Void
     @State private var acknowledged = false
-    private func text(_ ar: String, _ en: String) -> String { arabic ? ar : en }
+    private func text(_ ar: String, _ en: String) -> String { WorkshopCopy.text(ar, en, arabic: arabic) }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(text("راجع قبل التثبيت", "Review before installing")).font(.title2.weight(.semibold))

@@ -1,8 +1,16 @@
 # Verification and current limits
 
+## Build 22 — Sudo Interns / الفواعلي — 2026-11-08
+
+**142 app-hosted tests passed** in the final suite. This includes an MCP initialization regression across both supported legacy/current protocol versions and saved Arabic/English choices: the integration advertises **الفواعلي (Fawaly)** or **Sudo Interns (Fawaly)** while preserving tool identifiers and team configuration. Display metadata is sent when a client connects; an already-open client may retain its earlier name until reconnecting.
+
+The app now starts new workshops in English, keeps existing language choices, uses **Sudo Interns** in English and **الفواعلي** in Arabic, and shares a bilingual workshop voice. Functional labels, permission scope and billing facts remain explicit. Developer Daily adds official publisher feeds, attributed dates/links, source/topic filters, a durable local reading list and a copied review/trial brief without automatic AI usage. New tests cover hostile RSS/Atom, CDATA, date filtering, deduplication, partial failures, local cache isolation and bookmark retention.
+
+The final universal build was installed in one stable app location, development-signed using the owner's existing certificate, and opened successfully with hardened runtime. Old launchable previews were moved to recoverable Trash. All four configured workers completed bounded real text checks with actual Claude primary reviews; the host independently verified their saved replies and decisions. The live usage view updated while open. Current English screenshots were captured from the installed app. The public installer remains pending Developer ID/notarization. See [the full acceptance record](Full-App-Audit.md), [Developer Daily](Developer-Daily.md) and [local development installs](Development.md).
+
 ## Build 16 whole-app audit — 2026-11-08
 
-**134 tests passed** after fixes for headless Keychain prompting, conflicting roster advisor seats, stale local usage and crowded task actions. A real Claude→Codex consultation→Kimi delegation→primary review completed; real Claude/Kimi comparison outputs were independently checked. See [the complete acceptance matrix, repairs and remaining checks](Full-App-Audit.md). Final installation/UI rechecks and saved API-key approvals remain pending the owner unlocking the Mac; these pending provider results are not claimed.
+**134 tests passed** after fixes for headless Keychain prompting, conflicting roster advisor seats, stale local usage and crowded task actions. A real Claude→Codex consultation→Kimi delegation→primary review completed; real Claude/Kimi comparison outputs were independently checked. The later build 21 installation, UI and configured-provider follow-up is recorded above. See [the complete acceptance matrix, repairs and limits](Full-App-Audit.md).
 
 ## 0.7.0 local acceptance — 2026-11-07
 

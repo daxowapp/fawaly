@@ -47,6 +47,20 @@
 			"path" = "Sources/ConsultationControls.swift";
 			"sourceTree" = "SOURCE_ROOT";
 		};
+		"0060E1CA8CA6000E532EEA6A" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"name" = "DeveloperDaily.swift";
+			"path" = "Sources/Daily/DeveloperDaily.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"9414EF3E40EF4851EE27FA86" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"name" = "DeveloperDailyPage.swift";
+			"path" = "Sources/Daily/DeveloperDailyPage.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
 		"9D1B88D09B0BE1927E90F3A0" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -397,6 +411,13 @@
 			"path" = "Sources/Team/WorkerControls.swift";
 			"sourceTree" = "SOURCE_ROOT";
 		};
+		"E80FA70F64AA76E36F39AF89" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"name" = "WorkshopCopy.swift";
+			"path" = "Sources/WorkshopCopy.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
 		"AA8BBF4EC163EE3B533C9360" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -451,6 +472,13 @@
 			"lastKnownFileType" = "sourcecode.swift";
 			"name" = "DelegationPolicyTests.swift";
 			"path" = "Tests/DelegationPolicyTests.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"A0A8048D7FF39A8B313F3E20" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"name" = "DeveloperDailyTests.swift";
+			"path" = "Tests/DeveloperDailyTests.swift";
 			"sourceTree" = "SOURCE_ROOT";
 		};
 		"FC57288CEB0284F39CDF5663" = {
@@ -712,6 +740,8 @@
 				"45423F472F87D98C359FF259",
 				"7B945385A4CFC0022A3FEDD0",
 				"2C7040273D48ECAAD9BDDE42",
+				"0060E1CA8CA6000E532EEA6A",
+				"9414EF3E40EF4851EE27FA86",
 				"9D1B88D09B0BE1927E90F3A0",
 				"7C178670686EAA77A11CB003",
 				"A7686977D7E41C7A668459A2",
@@ -762,6 +792,7 @@
 				"205325444F6CC085B6D1619E",
 				"47A70705CD7B1414F35FE192",
 				"D9A610E81BA0982BDB4D8281",
+				"E80FA70F64AA76E36F39AF89",
 				"AA8BBF4EC163EE3B533C9360",
 				"CE06E59FC39628A47EC21427",
 				"873C0735CB45419104CFFCC5",
@@ -799,6 +830,7 @@
 				"93B958E8CCFB5375AA92BDC1",
 				"9E9ED50552BD202E630650C1",
 				"8A93591E130E0033870E8890",
+				"A0A8048D7FF39A8B313F3E20",
 				"FC57288CEB0284F39CDF5663",
 				"E79C190A2D072AEB271A0B8C",
 				"43E0FF8D010DA8C694C69DE3",
@@ -901,8 +933,8 @@
 				"ENABLE_DEBUG_DYLIB" = "NO";
 				"PRODUCT_BUNDLE_IDENTIFIER" = "com.daxow.fawaly.rebuilt";
 				"MARKETING_VERSION" = "0.7.0";
-				"CURRENT_PROJECT_VERSION" = "16";
-				"INFOPLIST_KEY_CFBundleDisplayName" = "Fawaly";
+				"CURRENT_PROJECT_VERSION" = "22";
+				"INFOPLIST_KEY_CFBundleDisplayName" = "Sudo Interns";
 				"ENABLE_HARDENED_RUNTIME" = "YES";
 				"GENERATE_INFOPLIST_FILE" = "NO";
 				"INFOPLIST_FILE" = "Config/Fawaly-Info.plist";
@@ -927,8 +959,8 @@
 				"ENABLE_DEBUG_DYLIB" = "NO";
 				"PRODUCT_BUNDLE_IDENTIFIER" = "com.daxow.fawaly.rebuilt";
 				"MARKETING_VERSION" = "0.7.0";
-				"CURRENT_PROJECT_VERSION" = "16";
-				"INFOPLIST_KEY_CFBundleDisplayName" = "Fawaly";
+				"CURRENT_PROJECT_VERSION" = "22";
+				"INFOPLIST_KEY_CFBundleDisplayName" = "Sudo Interns";
 				"ENABLE_HARDENED_RUNTIME" = "YES";
 				"GENERATE_INFOPLIST_FILE" = "NO";
 				"INFOPLIST_FILE" = "Config/Fawaly-Info.plist";
@@ -1041,6 +1073,14 @@
 		"A25CA49E1FD52B9CE2AD2EA1" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "2C7040273D48ECAAD9BDDE42";
+		};
+		"61E84616F982CC52A8A6A748" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "0060E1CA8CA6000E532EEA6A";
+		};
+		"15F0E205CF4CB7E2F329BECE" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "9414EF3E40EF4851EE27FA86";
 		};
 		"993C12E0FBC3B9BECFF61E16" = {
 			"isa" = "PBXBuildFile";
@@ -1242,6 +1282,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "D9A610E81BA0982BDB4D8281";
 		};
+		"021CD44B2CFAEB3556E4756C" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "E80FA70F64AA76E36F39AF89";
+		};
 		"29C52FDF8BC1BEC6A53750D5" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "AA8BBF4EC163EE3B533C9360";
@@ -1268,6 +1312,8 @@
 				"237F4BED4A43FD3A9B83DFFD",
 				"0E50320E85221670BF11ED0E",
 				"A25CA49E1FD52B9CE2AD2EA1",
+				"61E84616F982CC52A8A6A748",
+				"15F0E205CF4CB7E2F329BECE",
 				"993C12E0FBC3B9BECFF61E16",
 				"E1400E181FAA585A122A2D31",
 				"8E5596D35F29F8EF40FEC1AB",
@@ -1318,6 +1364,7 @@
 				"2FA5EF405E3B48237747BBD5",
 				"8C8670623852B5F8A307EA98",
 				"A26ED39BD42D690474A9999A",
+				"021CD44B2CFAEB3556E4756C",
 				"29C52FDF8BC1BEC6A53750D5",
 				"D06748EAF42777CCC8D40D46",
 				"0C322136AA644B9F1C4BFA15",
@@ -1423,6 +1470,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "8A93591E130E0033870E8890";
 		};
+		"2FC351C62FFE79C28CD576F3" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "A0A8048D7FF39A8B313F3E20";
+		};
 		"D2C3E4BEBA0666DD8569F3A8" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "FC57288CEB0284F39CDF5663";
@@ -1499,6 +1550,7 @@
 				"C8988F54A2E4BC37AA57635C",
 				"ADE4778598BE4D64A12F9CBC",
 				"32EF238B98DB7F2E4A0E0199",
+				"2FC351C62FFE79C28CD576F3",
 				"D2C3E4BEBA0666DD8569F3A8",
 				"4223576A06F3C4C27C47B098",
 				"C7B7E987CC69BC580F3D9F44",

@@ -8,6 +8,37 @@ private func engineFixture() throws -> URL {
     return root
 }
 
+@Test func MCPBrandingUsesSavedLanguageWithoutChangingTeamOrToolIdentity() async throws {
+    let root = try engineFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = WorkshopStore(root: root)
+    var state = WorkshopState()
+    state.team = TeamSettings(primary: .claude, advisor: .codex, workers: [.kimi])
+    let server = EngineMCP(bridge: EngineBridge(configuration: .init(root: root), client: .claude))
+    var stableTools: Set<String>?
+    for arabic in [false, true] {
+        state.arabic = arabic; try store.save(state)
+        let before = try Data(contentsOf: root.appendingPathComponent("workshop.json"))
+        for version in ["2024-11-05", "2025-11-25"] {
+            var initialized = false
+            let request: [String: Any] = ["jsonrpc": "2.0", "id": 1, "method": "initialize", "params": ["protocolVersion": version]]
+            let hello = await server.handle(try JSONSerialization.data(withJSONObject: request), initialized: &initialized)
+            let result = try #require(hello?["result"] as? [String: Any])
+            let metadata = try #require(result["serverInfo"] as? [String: Any])
+            #expect(result["protocolVersion"] as? String == version)
+            #expect(metadata["name"] as? String == (arabic ? "الفواعلي (Fawaly)" : "Sudo Interns (Fawaly)"))
+            #expect(metadata["title"] as? String == metadata["name"] as? String)
+            let list = await server.handle(Data(#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#.utf8), initialized: &initialized)
+            let specs = try #require((list?["result"] as? [String: Any])?["tools"] as? [[String: Any]])
+            let names = Set(specs.compactMap { $0["name"] as? String })
+            #expect(names.contains("delegate") && names.contains("roster_get") && names.contains("review"))
+            if let stableTools { #expect(names == stableTools) } else { stableTools = names }
+        }
+        #expect(try Data(contentsOf: root.appendingPathComponent("workshop.json")) == before)
+        #expect(try store.load().team == state.team)
+    }
+}
+
 @Test func isolatedCLIInvocationsUseSafeFlagsAndStdin() throws {
     let directory = try engineFixture()
     defer { try? FileManager.default.removeItem(at: directory) }
