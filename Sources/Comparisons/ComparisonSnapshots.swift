@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 struct ComparisonSnapshots: Sendable {
     struct Prepared: Sendable { let id: UUID; let commit: String; let directory: URL; let snapshots: [EngineAgent: URL] }
@@ -25,13 +26,13 @@ struct ComparisonSnapshots: Sendable {
             group.addTask {
                 let command = directory.appendingPathComponent("archive-command")
                 try Paths.ensurePrivateDirectory(command)
-                return try await WorkerProcess.run(program: "/usr/bin/git", arguments: ["-c", "core.hooksPath=/dev/null", "-C", project.path, "archive", "--format=tar", "--output=" + archive.path, commit],
+                return try await WorkerProcess.run(program: "/usr/bin/git", arguments: ["--no-optional-locks", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-C", project.path, "archive", "--format=tar", "--output=" + archive.path, commit],
                     environment: environment, directory: command, workingDirectory: command, prompt: "", timeout: 60)
             }
             group.addTask {
                 while true {
                     try Task.checkCancellation()
-                    let size = (try? archive.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+                    let size = (try? WorkerFiles.size(archive)) ?? 0
                     guard size <= Self.maximumArchiveBytes else { throw FawalyError.invalid("The committed project is too large for a comparison snapshot (128 MB maximum).") }
                     try await Task.sleep(for: .milliseconds(100))
                 }
@@ -39,7 +40,7 @@ struct ComparisonSnapshots: Sendable {
             defer { group.cancelAll() }
             _ = try await group.next()
         }
-        guard (try archive.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= Self.maximumArchiveBytes else { throw FawalyError.invalid("The comparison snapshot exceeds 128 MB.") }
+        guard (try WorkerFiles.size(archive)) <= Self.maximumArchiveBytes else { throw FawalyError.invalid("The comparison snapshot exceeds 128 MB.") }
         var snapshots: [EngineAgent: URL] = [:]
         for agent in agents {
             let snapshot = directory.appendingPathComponent(agent.rawValue + "/snapshot")
@@ -62,9 +63,16 @@ struct ComparisonSnapshots: Sendable {
                     }
                 }
             }
-            _ = try await git(["init", "--quiet"], project: snapshot, directory: directory, environment: environment)
+            var reserved = stat()
+            guard lstat(snapshot.appendingPathComponent(".git").path, &reserved) != 0, errno == ENOENT else {
+                throw FawalyError.invalid("The snapshot archive contains reserved Git metadata.")
+            }
+            let metadata = snapshot.deletingLastPathComponent().appendingPathComponent("baseline.git")
+            _ = try await git(["init", "--quiet", "--separate-git-dir=" + metadata.path], project: snapshot, directory: directory, environment: environment)
             _ = try await git(["add", "--force", "."], project: snapshot, directory: directory, environment: environment)
             _ = try await git(["-c", "user.name=Fawaly Comparison", "-c", "user.email=fawaly@localhost", "commit", "--quiet", "--no-gpg-sign", "--allow-empty", "-m", "Isolated comparison baseline"], project: snapshot, directory: directory, environment: environment)
+            let identity = try SnapshotIdentity(snapshot)
+            try JSONEncoder().encode(identity).write(to: snapshot.deletingLastPathComponent().appendingPathComponent("snapshot-identity.json"), options: .atomic)
             snapshots[agent] = snapshot
         }
         try FileManager.default.removeItem(at: archive)
@@ -72,18 +80,45 @@ struct ComparisonSnapshots: Sendable {
         return Prepared(id: id, commit: commit, directory: directory, snapshots: snapshots)
     }
 
+    struct SnapshotIdentity: Codable, Equatable {
+        let device: Int64
+        let inode: UInt64
+        init(_ url: URL) throws {
+            var info = stat()
+            guard lstat(url.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else {
+                throw FawalyError.invalid("The comparison snapshot was replaced or linked. Its result was not accepted.")
+            }
+            device = Int64(info.st_dev); inode = UInt64(info.st_ino)
+        }
+    }
+
     func changedFiles(in snapshot: URL, directory: URL) async throws -> [String] {
+        let parent = snapshot.deletingLastPathComponent()
+        let identity = try JSONDecoder().decode(SnapshotIdentity.self, from: WorkerFiles.read(parent.appendingPathComponent("snapshot-identity.json"), limit: 1024))
+        guard try SnapshotIdentity(snapshot) == identity else { throw FawalyError.invalid("The comparison snapshot was replaced. Review the result manually.") }
+        let metadata = parent.appendingPathComponent("baseline.git")
         let environment = ["PATH": "/usr/bin:/bin", "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
                            "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"]
-        let changed = try await git(["diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", "HEAD"], project: snapshot, directory: directory, environment: environment)
-        let added = try await git(["ls-files", "--others", "-z"], project: snapshot, directory: directory, environment: environment)
+        let changed = try await git(["diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", "HEAD"], project: snapshot, directory: directory, environment: environment, metadata: metadata)
+        let added = try await git(["ls-files", "--others", "--exclude-standard", "-z"], project: snapshot, directory: directory, environment: environment, metadata: metadata)
+        guard try SnapshotIdentity(snapshot) == identity else { throw FawalyError.invalid("The comparison snapshot changed during inspection. Review it manually.") }
         return Array(Set((changed + "\0" + added).split(separator: "\0").map(String.init))).sorted()
     }
 
-    private func git(_ arguments: [String], project: URL, directory: URL, environment: [String: String]) async throws -> String {
+    private func git(_ arguments: [String], project: URL, directory: URL, environment: [String: String], metadata: URL? = nil) async throws -> String {
         let command = directory.appendingPathComponent("git-" + UUID().uuidString)
         try Paths.ensurePrivateDirectory(command)
-        let data = try await WorkerProcess.run(program: "/usr/bin/git", arguments: ["-c", "core.hooksPath=/dev/null", "-C", project.path] + arguments,
+        var args = ["--no-optional-locks", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-C", project.path]
+        var program = "/usr/bin/git"
+        if let metadata {
+            args += ["--git-dir=" + metadata.path, "--work-tree=" + project.path]
+            let policy = command.appendingPathComponent("inspect.sb")
+            let invocation = AgentWorker.Invocation(program: URL(fileURLWithPath: program), arguments: [], environment: [:])
+            try AgentWorker.sandboxProfile(invocation: invocation, directory: command, workspace: project, codexHome: nil, readOnly: [metadata]).write(to: policy, atomically: true, encoding: .utf8)
+            args = ["-f", policy.path, program] + args
+            program = "/usr/bin/sandbox-exec"
+        }
+        let data = try await WorkerProcess.run(program: program, arguments: args + arguments,
             environment: environment, directory: command, workingDirectory: command, prompt: "", timeout: 15)
         return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }

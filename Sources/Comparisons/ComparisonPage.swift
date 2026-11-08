@@ -127,6 +127,9 @@ private struct ComparisonResultCard: View {
                                 ForEach(changed, id: \.self) { Text($0).font(.caption.monospaced()).textSelection(.enabled) }
                             }
                         }
+                        if run.inventoryTruncated == true || run.inventoryIssue != nil {
+                            Label(model.text("قائمة الملفات غير مكتملة. افتح النسخة وراجع التعديلات يدويًا.", "File inventory is incomplete. Open the snapshot and review changes manually."), systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(Workshop.warning)
+                        }
                         if run.finished != nil {
                             HStack {
                                 Button(model.text("افتح نسخة \(run.agent.label)", "Open \(run.agent.label) snapshot")) { NSWorkspace.shared.open(session.snapshot(root: root, agent: run.agent)) }

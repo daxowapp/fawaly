@@ -73,7 +73,7 @@ struct WorkshopWindow: View {
             HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 10) {
-                    WorkshopGlyph(page: .shift, size: 36, active: false)
+                    WorkshopGlyph(page: .rules, size: 36, active: false)
                         .padding(7).background(Workshop.yellow.opacity(0.16), in: RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading) {
                         Text(model.text("الكبير يراجع", "The primary reviews")).font(Workshop.heading(19, ar: model.arabic))
@@ -85,13 +85,13 @@ struct WorkshopWindow: View {
                         ForEach(AppPage.navigation) { item in
                             Button { page = item } label: {
                                 HStack(spacing: 11) {
-                                    WorkshopGlyph(page: item, size: 27, active: page == item)
-                                    Text(item.title(model.arabic)).font(.callout.weight(page == item ? .semibold : .regular))
+                                    WorkshopGlyph(page: item, size: 27, active: (page == item || (page == .shift && item == .worklog)))
+                                    Text(item.title(model.arabic)).font(.callout.weight((page == item || (page == .shift && item == .worklog)) ? .semibold : .regular))
                                     Spacer(minLength: 0)
-                                }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(page == item ? Workshop.yellow.opacity(0.23) : .clear, in: RoundedRectangle(cornerRadius: 12))
+                                }.padding(.horizontal, 12).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)
+                                    .background((page == item || (page == .shift && item == .worklog)) ? Workshop.yellow.opacity(0.23) : .clear, in: RoundedRectangle(cornerRadius: 12))
                                     .contentShape(Rectangle())
-                            }.buttonStyle(.plain).accessibilityLabel(item.title(model.arabic)).accessibilityAddTraits(page == item ? .isSelected : [])
+                            }.buttonStyle(.plain).accessibilityLabel(item.title(model.arabic)).accessibilityAddTraits((page == item || (page == .shift && item == .worklog)) ? .isSelected : [])
                         }
                     }.padding(.horizontal, 10)
                 }
@@ -99,7 +99,7 @@ struct WorkshopWindow: View {
                     Image(systemName: "mug.fill").foregroundStyle(Workshop.yellow).font(.title2)
                     VStack(alignment: .leading, spacing: 5) {
                         Text(model.text("القهوة علينا. الشغل عليهم.", "Coffee’s on us. Work’s on them.")).font(.caption.weight(.semibold))
-                        Text(model.text("محلي. ومفاتيحك عندك.", "Local. Your keys stay with you.")).font(.caption2).foregroundStyle(.secondary)
+                        Text(model.text("مفاتيحك على الماك. المهام للخدمات اللي تختارها.", "Keys on your Mac. Tasks go to your chosen services.")).font(.caption2).foregroundStyle(.secondary)
                     }
                 }.padding(18)
             }
@@ -124,8 +124,8 @@ struct WorkshopWindow: View {
                                 case .hires: WorkerModelsPage()
                                 case .contest: ComparisonPage()
                                 case .contractors: services
-                                case .skills: SkillsPage()
-                                case .daily: DeveloperDailyPage()
+                                case .skills: SkillsPage(activity: model.skillActivity)
+                                case .daily: DeveloperDailyPage(daily: model.daily)
                                 case .settings: settings
                                 case .usage: UsagePage()
                                 default: home
@@ -394,7 +394,7 @@ struct ProviderSheet: View {
                         try model.configure(EndpointSettings(endpoint: endpoint, model: modelID), key: key)
                         dismiss()
                     } catch { issue = error.localizedDescription }
-                }.buttonStyle(WorkshopPrimaryButtonStyle()).disabled(model.busy)
+                }.buttonStyle(WorkshopPrimaryButtonStyle()).keyboardShortcut(.defaultAction).disabled(model.busy)
             }
         }.padding(24).frame(width: 510)
             .onAppear {

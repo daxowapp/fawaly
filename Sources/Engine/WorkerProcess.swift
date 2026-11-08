@@ -1,6 +1,10 @@
 import Darwin
 import Foundation
 
+struct WorkerAuthenticationError: LocalizedError {
+    var errorDescription: String? { "The worker rejected its isolated sign-in. Reconnect it in Services." }
+}
+
 enum WorkerProcess {
     private final class Registry: @unchecked Sendable {
         let lock = NSLock()
@@ -23,7 +27,14 @@ enum WorkerProcess {
         let input = directory.appendingPathComponent("brief.txt")
         let output = directory.appendingPathComponent("stdout")
         let diagnostics = directory.appendingPathComponent("stderr")
-        try Data(prompt.utf8).write(to: input, options: .withoutOverwriting)
+        let inputFD = try WorkerFiles.create(input)
+        defer { close(inputFD) }
+        try FileHandle(fileDescriptor: inputFD, closeOnDealloc: false).write(contentsOf: Data(prompt.utf8))
+        guard lseek(inputFD, 0, SEEK_SET) == 0 else { throw launchError }
+        let outputFD = try WorkerFiles.create(output)
+        defer { close(outputFD) }
+        let diagnosticFD = try WorkerFiles.create(diagnostics)
+        defer { close(diagnosticFD) }
         var actions: posix_spawn_file_actions_t?
         guard posix_spawn_file_actions_init(&actions) == 0 else { throw launchError }
         defer { posix_spawn_file_actions_destroy(&actions) }
@@ -31,13 +42,11 @@ enum WorkerProcess {
         guard posix_spawnattr_init(&attributes) == 0 else { throw launchError }
         defer { posix_spawnattr_destroy(&attributes) }
 
-        let streams = [(STDIN_FILENO, input, O_RDONLY), (STDOUT_FILENO, output, O_WRONLY | O_CREAT | O_EXCL),
-                       (STDERR_FILENO, diagnostics, O_WRONLY | O_CREAT | O_EXCL)]
-        for (fd, url, flags) in streams {
-            guard posix_spawn_file_actions_addopen(&actions, fd, url.path, flags, 0o600) == 0 else { throw launchError }
+        for (source, target) in [(inputFD, STDIN_FILENO), (outputFD, STDOUT_FILENO), (diagnosticFD, STDERR_FILENO)] {
+            guard posix_spawn_file_actions_adddup2(&actions, source, target) == 0 else { throw launchError }
         }
         guard posix_spawn_file_actions_addchdir_np(&actions, workingDirectory.path) == 0,
-              posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETPGROUP)) == 0,
+              posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_CLOEXEC_DEFAULT)) == 0,
               posix_spawnattr_setpgroup(&attributes, 0) == 0 else { throw launchError }
 
         var pid: pid_t = 0
@@ -81,31 +90,32 @@ enum WorkerProcess {
             try Task.checkCancellation()
             if let stopFile, FileManager.default.fileExists(atPath: stopFile.path) { throw WorkerStopped() }
             guard clock.now < deadline else { throw FawalyError.invalid("The worker exceeded its time limit.") }
-            guard size(of: output) <= outputLimit, size(of: diagnostics) <= outputLimit else {
+            guard try WorkerFiles.size(outputFD) <= outputLimit, try WorkerFiles.size(diagnosticFD) <= outputLimit else {
                 throw FawalyError.invalid("The worker exceeded its output limit.")
             }
             try await Task.sleep(for: .milliseconds(100))
         }
         guard (status & 0x7f) == 0, ((status >> 8) & 0xff) == 0 else {
-            let detail = size(of: diagnostics) <= outputLimit ? (try? String(contentsOf: diagnostics, encoding: .utf8)) ?? "" : ""
+            let detail = (try? WorkerFiles.read(diagnosticFD, limit: outputLimit)).map { String(decoding: $0, as: UTF8.self) } ?? ""
             if detail.contains("sandbox_apply") || detail.contains("sandbox-exec:") {
                 throw FawalyError.invalid("The worker sandbox could not start. The request was stopped.")
             }
-            let response = size(of: output) <= outputLimit ? (try? String(contentsOf: output, encoding: .utf8)) ?? "" : ""
+            let response = (try? WorkerFiles.read(outputFD, limit: outputLimit)).map { String(decoding: $0, as: UTF8.self) } ?? ""
             let authenticationDetail = detail + response
-            if authenticationDetail.localizedCaseInsensitiveContains("not logged in") || authenticationDetail.localizedCaseInsensitiveContains("invalid api key")
-                || authenticationDetail.localizedCaseInsensitiveContains("authentication") || authenticationDetail.localizedCaseInsensitiveContains("401") {
-                throw FawalyError.invalid("The worker rejected its isolated sign-in. Reconnect it in Services.")
+            let event = (try? JSONSerialization.jsonObject(with: Data(response.utf8))) as? [String: Any]
+            if event?["api_error_status"] as? Int == 401 || ["not logged in", "invalid api key", "failed to authenticate", "authentication failed", "401 unauthorized"].contains(where: { authenticationDetail.localizedCaseInsensitiveContains($0) }) {
+                throw WorkerAuthenticationError()
             }
             throw FawalyError.invalid("The worker exited before returning a result. Check its isolated sign-in and CLI version.")
         }
-        guard size(of: output) <= outputLimit else { throw FawalyError.invalid("The worker exceeded its output limit.") }
-        return try Data(contentsOf: output)
+        // Recheck both streams after reaping: a fast, successful child can finish
+        // between polls with oversized diagnostics as well as oversized stdout.
+        guard try WorkerFiles.size(outputFD) <= outputLimit, try WorkerFiles.size(diagnosticFD) <= outputLimit else {
+            throw FawalyError.invalid("The worker exceeded its output limit.")
+        }
+        return try WorkerFiles.read(outputFD, limit: outputLimit)
     }
 
     private static var launchError: FawalyError { .invalid("Fawaly could not start the worker process.") }
 
-    private static func size(of url: URL) -> Int {
-        (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-    }
 }

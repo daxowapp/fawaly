@@ -53,7 +53,7 @@ enum LoginProcess {
         }
         for fd in input + output + diagnostic { guard posix_spawn_file_actions_addclose(&actions, fd) == 0 else { throw launchError } }
         guard posix_spawn_file_actions_addchdir_np(&actions, command.directory.path) == 0,
-              posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETPGROUP)) == 0,
+              posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_CLOEXEC_DEFAULT)) == 0,
               posix_spawnattr_setpgroup(&attributes, 0) == 0 else { throw launchError }
         var argv = ([command.executable.path] + command.arguments).map { strdup($0) }
         var envp = command.environment.sorted(by: { $0.key < $1.key }).map { strdup($0.key + "=" + $0.value) }

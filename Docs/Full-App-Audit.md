@@ -1,3 +1,5 @@
+> Follow-up: build26 adds a production security audit, verified worker-output isolation repairs and Claude UI/UX collaboration. See [Production-Readiness](Production-Readiness.md) for the current release decision; earlier live account checks below remain dated evidence.
+
 # Whole-app acceptance — 2026-11-08
 
 This review combines native UI checks, real native-provider requests, isolated fixtures and regression tests. It is not a claim that every provider account or distribution channel is verified.

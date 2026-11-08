@@ -57,6 +57,8 @@ struct RuntimeInstaller: Sendable {
         try Paths.ensurePrivateDirectory(staging)
         defer { try? FileManager.default.removeItem(at: staging) }
         let config = URLSessionConfiguration.ephemeral
+        config.urlCredentialStorage = nil
+        config.httpShouldSetCookies = false
         config.timeoutIntervalForResource = 300
         let guardrail = DownloadGuard()
         let session = URLSession(configuration: config, delegate: guardrail, delegateQueue: nil)
@@ -66,8 +68,7 @@ struct RuntimeInstaller: Sendable {
         if agent == .codex || agent == .kimi {
             let repository = agent == .codex ? "openai/codex" : "MoonshotAI/kimi-code"
             let request = URLRequest(url: URL(string: "https://api.github.com/repos/" + repository + "/releases/latest")!)
-            let (data, response) = try await session.data(for: request)
-            try Self.requireSuccess(response)
+            let data = try await Self.metadata(request.url!, session: session, limit: 2 * 1024 * 1024)
             let release = try JSONDecoder().decode(Release.self, from: data)
             let name = agent == .codex ? "codex-" + Self.codexPlatform : "kimi"
             let archiveName = agent == .codex ? name + ".tar.gz" : "kimi-code-" + Self.claudePlatform + ".tar.gz"
@@ -89,14 +90,12 @@ struct RuntimeInstaller: Sendable {
             candidate = staging.appendingPathComponent(name)
         } else {
             let base = "https://downloads.claude.ai/claude-code-releases"
-            let (versionData, versionReply) = try await session.data(from: URL(string: base + "/stable")!)
-            try Self.requireSuccess(versionReply)
+            let versionData = try await Self.metadata(URL(string: base + "/stable")!, session: session, limit: 128)
             let version = String(decoding: versionData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
             guard version.range(of: #"^\d+\.\d+\.\d+$"#, options: .regularExpression) != nil else {
                 throw FawalyError.invalid("The official Claude Code version could not be read.")
             }
-            let (data, response) = try await session.data(from: URL(string: base + "/" + version + "/manifest.json")!)
-            try Self.requireSuccess(response)
+            let data = try await Self.metadata(URL(string: base + "/" + version + "/manifest.json")!, session: session, limit: 512 * 1024)
             let manifest = try JSONDecoder().decode(ClaudeManifest.self, from: data)
             guard let platform = manifest.platforms[Self.claudePlatform], platform.size <= 400_000_000 else {
                 throw FawalyError.invalid("Claude Code is unavailable for this Mac.")
@@ -157,6 +156,23 @@ struct RuntimeInstaller: Sendable {
         var digest = SHA256()
         while let chunk = try handle.read(upToCount: 1_048_576), !chunk.isEmpty { digest.update(data: chunk) }
         return digest.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Bound metadata while receiving it, before JSON/string decoding or archive download.
+    static func metadata(_ url: URL, session: URLSession, limit: Int) async throws -> Data {
+        guard (1...2 * 1024 * 1024).contains(limit) else { throw FawalyError.invalid("Invalid service metadata limit.") }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
+        request.setValue("application/json, text/plain", forHTTPHeaderField: "Accept")
+        let (bytes, response) = try await session.bytes(for: request)
+        try requireSuccess(response)
+        guard response.expectedContentLength <= Int64(limit) else { throw FawalyError.invalid("Official service metadata exceeded its size limit.") }
+        var data = Data()
+        for try await byte in bytes {
+            try Task.checkCancellation()
+            guard data.count < limit else { throw FawalyError.invalid("Official service metadata exceeded its size limit.") }
+            data.append(byte)
+        }
+        return data
     }
 
     private static func requireSuccess(_ response: URLResponse) throws {

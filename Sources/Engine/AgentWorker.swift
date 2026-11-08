@@ -108,17 +108,23 @@ struct AgentWorker: Sendable {
         let invocation = try Self.invocation(agent, executable: executable, directory: directory,
                                              workspace: authorizedWorkspace, codexHome: configuration.codexHome, token: token, claudeHome: claudeHome, kimiHome: kimiHome, model: requestedModel)
         let profile = directory.appendingPathComponent("worker.sb")
+        let comparisonMetadata = managedSnapshot ? authorizedWorkspace.map { [$0.deletingLastPathComponent().appendingPathComponent("baseline.git")] } ?? [] : []
         try Self.sandboxProfile(invocation: invocation, directory: directory, workspace: authorizedWorkspace,
                                 codexHome: agent == .codex ? configuration.codexHome : agent == .kimi ? kimiHome : claudeHome,
-                                authKeychain: agent == .claude && claudeHome != nil ? EngineKeychain.defaultKeychainFile() : nil, protectGitMetadata: true).write(to: profile, atomically: true, encoding: .utf8)
+                                authKeychain: agent == .claude && claudeHome != nil ? EngineKeychain.defaultKeychainFile() : nil, protectGitMetadata: true, readOnly: comparisonMetadata).write(to: profile, atomically: true, encoding: .utf8)
         let workerPrompt = authorizedWorkspace.map { "The only approved project directory is " + $0.path + ". Use absolute paths under that directory.\n\n" + prompt } ?? prompt
-        let output = try await WorkerProcess.run(program: "/usr/bin/sandbox-exec", arguments: ["-f", profile.path, executable.path] + invocation.arguments,
+        let output: Data
+        do { output = try await WorkerProcess.run(program: "/usr/bin/sandbox-exec", arguments: ["-f", profile.path, executable.path] + invocation.arguments,
                                                   environment: invocation.environment, directory: directory,
-                                                  workingDirectory: directory, prompt: workerPrompt, timeout: timeout, stopFile: WorkerContext.stopFile)
+                                                  workingDirectory: directory, prompt: workerPrompt, timeout: timeout, stopFile: WorkerContext.stopFile) }
+        catch let error as WorkerAuthenticationError {
+            try? configuration.requireNativeSignIn(agent, required: true)
+            throw FawalyError.invalid(error.localizedDescription)
+        }
         return try Self.answer(agent, directory: directory, output: output)
     }
 
-    static func sandboxProfile(invocation: Invocation, directory: URL, workspace: URL?, codexHome: URL?, authKeychain: URL? = nil, protectGitMetadata: Bool = true) -> String {
+    static func sandboxProfile(invocation: Invocation, directory: URL, workspace: URL?, codexHome: URL?, authKeychain: URL? = nil, protectGitMetadata: Bool = true, readOnly: [URL] = []) -> String {
         let home = FileManager.default.homeDirectoryForCurrentUser.resolvingSymlinksInPath()
         let program = invocation.program
         let programPath = program.pathComponents
@@ -133,7 +139,7 @@ struct AgentWorker: Sendable {
             return String(cString: path)
         }
         let writable = ([directory] + [workspace, codexHome].compactMap { $0 }).map(filesystemPath)
-        let readable = writable + [package] + [authKeychain?.path].compactMap { $0 }
+        let readable = writable + [package] + [authKeychain?.path].compactMap { $0 } + readOnly.map(filesystemPath)
         func filters(_ paths: [String]) -> String {
             paths.map { path in
                 let escaped = path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
@@ -159,9 +165,10 @@ struct AgentWorker: Sendable {
         switch agent {
         case .codex:
             let final = directory.appendingPathComponent("final.txt")
-            let fileText = (try? final.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { size in
-                size <= WorkerProcess.outputLimit ? try? String(contentsOf: final, encoding: .utf8) : nil
-            }
+            var info = stat()
+            let exists = lstat(final.path, &info) == 0
+            if !exists && errno != ENOENT { throw FawalyError.invalid("The final answer could not be inspected safely.") }
+            let fileText = exists ? String(data: try WorkerFiles.read(final, limit: WorkerProcess.outputLimit), encoding: .utf8) : nil
             if let fileText, !fileText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 text = fileText
             } else {

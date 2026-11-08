@@ -24,17 +24,22 @@ final class AppModel: ObservableObject {
     private let monitoringStarted = Date()
     private var notified = Set<UUID>()
     private var launcherChecked = false
-    var activeWorkCount: Int { teamJobs.filter { $0.status == "running" }.count + activeComparisons }
+    var activeWorkCount: Int { teamJobs.filter { $0.status == "running" }.count + activeComparisons + (skillActivity.active == nil ? 0 : 1) }
 
     @Published var problem: String?
     @Published var showProviderSheet = false
     @Published var showOnboarding = false
+    let skillActivity = SkillActivity()
+    let daily = DailyViewModel()
     let setup: SetupCoordinator
     let updates: WorkshopUpdates
     let preferencesSync: PreferencesSyncController
 
     @Published private(set) var checkingAccounts = false
-    @Published private(set) var accountCheckSummary: String?
+    @Published private var accountCheckCounts: (connected: Int, checked: Int)?
+    var accountCheckSummary: String? {
+        accountCheckCounts.map { text("اتراجع تسجيل الدخول المحلي: \($0.connected) من \($0.checked) حسابات متاحة.", "Local sign-in checked: \($0.connected) of \($0.checked) accounts available.") }
+    }
     private var apiKey = ""
     private let store: WorkshopStore
     private let consultLog: ConsultLog
@@ -50,7 +55,7 @@ final class AppModel: ObservableObject {
         load()
         updates.canBegin = { [weak self] in
             guard let self else { return false }
-            return self.loaded && !self.busy && !self.setup.busy && !self.showOnboarding
+            return self.loaded && !self.busy && !self.setup.busy && !self.showOnboarding && self.activeWorkCount == 0
         }
     }
 
@@ -193,7 +198,7 @@ final class AppModel: ObservableObject {
             catch { checked += 1 }
         }
         refreshEngine()
-        accountCheckSummary = text("اتراجع تسجيل الدخول المحلي: \(connected) من \(checked) حسابات متاحة.", "Local sign-in checked: \(connected) of \(checked) accounts available.")
+        accountCheckCounts = (connected, checked)
     }
 
 

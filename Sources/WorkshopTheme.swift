@@ -5,7 +5,7 @@ enum AppPage: String, CaseIterable, Identifiable {
     case home, shift, advisor, contractors, worklog, usage, settings, hires, contest, connection, rules, skills, daily
 
     var id: Self { self }
-    static let navigation: [Self] = [.home, .daily, .connection, .rules, .advisor, .contractors, .skills, .worklog, .usage, .hires, .contest, .settings]
+    static let navigation: [Self] = [.home, .connection, .rules, .advisor, .contractors, .skills, .daily, .worklog, .usage, .hires, .contest, .settings]
 
     func title(_ arabic: Bool) -> String {
         switch self {
@@ -33,6 +33,12 @@ enum AppResources {
 enum Workshop {
     static let yellow = Color(red: 0.96, green: 0.71, blue: 0.19)
     static let card = Color(nsColor: .controlBackgroundColor)
+    // Semantic warning ink remains readable on both light and dark cards.
+    static let warning = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(red: 1, green: 0.76, blue: 0.36, alpha: 1)
+            : NSColor(red: 0.48, green: 0.26, blue: 0.02, alpha: 1)
+    })
     static func heading(_ size: CGFloat, ar: Bool) -> Font {
         ar ? .custom("Lalezar-Regular", size: size, relativeTo: .title) : .system(size: size, weight: .semibold, design: .rounded)
     }
@@ -51,13 +57,7 @@ struct SectionHeader: View {
                 Text(subtitle).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
-            if page == .daily {
-                Image(systemName: "newspaper").font(.system(size: 32)).foregroundStyle(Workshop.yellow)
-                    .padding(14).background(Workshop.yellow.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
-                    .accessibilityHidden(true)
-            } else {
-                WorkshopIllustration(page: page == .home ? .shift : page == .advisor ? .contractors : page)
-            }
+            WorkshopIllustration(page: page, compact: page == .daily).id(page)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -76,11 +76,13 @@ struct WorkshopCard<Content: View>: View {
 
 struct WorkshopPrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.isFocused) private var focused
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.callout.weight(.semibold))
             .padding(.horizontal, 13).padding(.vertical, 8)
             .background(Workshop.yellow.opacity(configuration.isPressed ? 0.72 : 1), in: RoundedRectangle(cornerRadius: 8))
             .foregroundStyle(.black.opacity(0.86))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(focused ? Color.primary : .clear, lineWidth: 2).padding(-3))
             .opacity(enabled ? 1 : 0.5)
     }
 }

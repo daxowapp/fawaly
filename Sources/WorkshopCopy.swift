@@ -30,7 +30,7 @@ enum WorkshopCopy {
         "The primary reviews": ("الكبير يراجع", "The lead checks"),
         "Fawaly executes": ("والفواعلي يشيلوا", "The interns do the lifting"),
         "Coffee’s on us. Work’s on them.": ("القهوة علينا. الشغل عليهم.", "Overprompted. Underpaid."),
-        "Local. Your keys stay with you.": ("الشغل محلي. مفاتيحك مش مع الصبيان.", "Local workshop. Your keys, your pocket."),
+        "Keys on your Mac. Tasks go to your chosen services.": ("المفاتيح عندك. الشغل للخدمات اللي تختارها.", "Keys on your Mac. Tasks go to your chosen services."),
         "Your team": ("طاقم الوردية", "The crew on this shift"),
         "Leads the work and makes decisions": ("الكبير اللي يقول آخر كلام", "Calls the shots. Owns the result."),
         "Reviews and gives an independent opinion": ("عين تانية. مش مجرد حاضر يا ريس.", "A second opinion. Not a yes-bot."),

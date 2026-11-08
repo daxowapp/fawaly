@@ -73,7 +73,7 @@ app_settings = {
   'PRODUCT_NAME' => 'Fawaly Rebuilt', 'PRODUCT_MODULE_NAME' => 'FawalyApp',
   'ENABLE_DEBUG_DYLIB' => 'NO',
   'PRODUCT_BUNDLE_IDENTIFIER' => 'com.daxow.fawaly.rebuilt', 'MARKETING_VERSION' => '0.7.0',
-  'CURRENT_PROJECT_VERSION' => '22', 'INFOPLIST_KEY_CFBundleDisplayName' => 'Sudo Interns',
+  'CURRENT_PROJECT_VERSION' => '26', 'INFOPLIST_KEY_CFBundleDisplayName' => 'Sudo Interns',
   'ENABLE_HARDENED_RUNTIME' => 'YES',
   'GENERATE_INFOPLIST_FILE' => 'NO', 'INFOPLIST_FILE' => 'Config/Fawaly-Info.plist',
   'INFOPLIST_KEY_CFBundleIconFile' => 'Fawaly.icns', 'INFOPLIST_KEY_LSApplicationCategoryType' => 'public.app-category.productivity',

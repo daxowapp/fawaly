@@ -2,8 +2,20 @@ import SwiftUI
 import AppKit
 
 extension AppPage {
-    var artwork: String { [.hires, .skills, .daily].contains(self) ? "discovery" : self == .connection ? "contractors" : self == .rules ? "shift" : rawValue }
-    var hasArtwork: Bool { self != .home && self != .advisor }
+    var artwork: String {
+        switch self {
+        case .home: "home-v2"
+        case .connection: "connection-v2"
+        case .advisor: "advisor-v2"
+        case .skills: "skills-v2"
+        case .daily: "daily-v2"
+        case .shift: "composer-v2"
+        case .rules: "shift"
+        case .hires: "discovery"
+        case .contractors, .worklog, .usage, .settings, .contest: rawValue
+        }
+    }
+    var hasArtwork: Bool { true }
 }
 
 @MainActor private enum WorkshopArtImages {
@@ -27,6 +39,7 @@ private struct MotionEnvironment {
 /// It enters with a hop, lives for a few seconds with scene effects, then rests until hovered.
 struct WorkshopIllustration: View {
     let page: AppPage
+    var compact = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.controlActiveState) private var activeState
     @Environment(\.layoutDirection) private var layoutDirection
@@ -50,14 +63,16 @@ struct WorkshopIllustration: View {
                 TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !running)) { timeline in
                     scene(image: image, now: timeline.date)
                 }
-                .rotationEffect(.degrees(reduceMotion ? 0 : hovered ? -3 : 0))
-                .offset(y: reduceMotion ? 0 : hovered ? -4 : 0)
+                .rotationEffect(.degrees(!gate.allowsMotion ? 0 : hovered ? -3 : 0))
+                .offset(y: !gate.allowsMotion ? 0 : hovered ? -4 : 0)
             }
             Image(systemName: "sparkle").font(.system(size: 13, weight: .bold))
                 .foregroundStyle(Workshop.yellow).offset(x: 67, y: -44)
-                .scaleEffect(reduceMotion ? 1 : hovered ? 1.25 : 1)
+                .scaleEffect(!gate.allowsMotion ? 1 : hovered ? 1.25 : 1)
         }
         .frame(width: 184, height: 154)
+        .scaleEffect(compact ? 0.42 : 1)
+        .frame(width: compact ? 78 : 184, height: compact ? 65 : 154)
         .onAppear { let now = Date(); appearedAt = now; liveliness = Liveliness(now: now) }
         .onHover { inside in
             hovered = inside
@@ -69,18 +84,18 @@ struct WorkshopIllustration: View {
             if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
             restTick &+= 1
         }
-        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.7), value: hovered)
+        .animation(!gate.allowsMotion ? nil : .spring(response: 0.35, dampingFraction: 0.7), value: hovered)
         .accessibilityHidden(true)
     }
 
-    private func entering(at now: Date) -> Bool { !reduceMotion && now.timeIntervalSince(appearedAt) < 0.7 }
+    private func entering(at now: Date) -> Bool { gate.allowsMotion && now.timeIntervalSince(appearedAt) < 0.7 }
 
     @ViewBuilder private func scene(image: NSImage, now: Date) -> some View {
         let t = now.timeIntervalSinceReferenceDate
         let live = liveliness.isLive(at: now, gate: gate)
         // Effects and idle motion fade over the last 0.6 s instead of stopping abruptly.
         let fade = live ? min(1, liveliness.liveUntil.timeIntervalSince(now) / 0.6) : 0
-        let entrance = reduceMotion ? 1 : min(1, max(0, now.timeIntervalSince(appearedAt) / 0.7))
+        let entrance = gate.allowsMotion ? min(1, max(0, now.timeIntervalSince(appearedAt) / 0.7)) : 1
         let pose = idlePose(t: t - appearedAt.timeIntervalSinceReferenceDate, weight: fade)
         let hop = Self.entrancePose(entrance)
         let rect = ArtGeometry.fitted(imageSize: image.size, in: Self.frame)
@@ -135,11 +150,13 @@ struct WorkshopGlyph: View {
     var size: CGFloat = 22
     var active = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.controlActiveState) private var activeState
+    private var motionAllowed: Bool { MotionEnvironment(reduceMotion: reduceMotion, activeState: activeState).gate.allowsMotion }
     @State private var startedAt: Date?
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: startedAt == nil)) { timeline in
-            let phase = startedAt.map { min(1, timeline.date.timeIntervalSince($0) / GlyphMotion.duration) } ?? 0
+        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: startedAt == nil || !motionAllowed)) { timeline in
+            let phase = (motionAllowed ? startedAt : nil).map { min(1, timeline.date.timeIntervalSince($0) / GlyphMotion.duration) } ?? 0
             Canvas { context, bounds in draw(context, bounds: bounds, phase: phase) }
         }
         .frame(width: size, height: size)
@@ -153,7 +170,7 @@ struct WorkshopGlyph: View {
         .accessibilityHidden(true)
     }
 
-    private func play() { if !reduceMotion && startedAt == nil { startedAt = Date() } }
+    private func play() { if motionAllowed && startedAt == nil { startedAt = Date() } }
 
     private func draw(_ base: GraphicsContext, bounds: CGSize, phase: Double) {
         var root = base
@@ -183,7 +200,7 @@ struct WorkshopGlyph: View {
             return c
         }
         switch page {
-        case .shift, .rules:
+        case .rules:
             circle(root, 11, 9, 10, fill: true)
             line(root, [.init(x: 7, y: 27), .init(x: 8, y: 23), .init(x: 12, y: 21), .init(x: 20, y: 21), .init(x: 24, y: 23), .init(x: 25, y: 27)])
             let helmet = moved(0, -3 * b, rotate: -14 * b, around: CGPoint(x: 16, y: 10))
@@ -191,10 +208,20 @@ struct WorkshopGlyph: View {
             line(helmet, [.init(x: 13, y: 9), .init(x: 13, y: 6), .init(x: 19, y: 6), .init(x: 19, y: 9)], close: true)
             line(root, [.init(x: 3, y: 15), .init(x: 3, y: 24)]); line(root, [.init(x: 29, y: 15), .init(x: 29, y: 24)])
         case .usage:
-            rect(root, 5, 17, 22, 10, fill: true); line(root, [.init(x: 6, y: 22), .init(x: 26, y: 22)])
-            let coin = moved(0, -6 * b, around: CGPoint(x: 16, y: 10), scaleX: phase > 0 && phase < 1 ? cos(2 * .pi * phase) : 1)
-            circle(coin, 11, 5, 10, fill: true); line(coin, [.init(x: 16, y: 8), .init(x: 16, y: 12)])
-        case .hires, .skills:
+            var arc = Path(); arc.addArc(center: .init(x: 16, y: 20), radius: 12, startAngle: .degrees(180), endAngle: .degrees(0), clockwise: false)
+            root.stroke(arc, with: ink, style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
+            line(root, [.init(x: 4, y: 21), .init(x: 28, y: 21)])
+            for x in [8.0, 16.0, 24.0] { line(root, [.init(x: x, y: x == 16 ? 8 : 12), .init(x: x, y: x == 16 ? 11 : 14)]) }
+            let needle = moved(rotate: 20 * b, around: .init(x: 16, y: 20))
+            line(needle, [.init(x: 16, y: 20), .init(x: 22, y: 12)], width: 2.5)
+            circle(root, 13, 17, 6, fill: true)
+        case .hires:
+            rect(root, 5, 5, 17, 17, fill: true)
+            for y in [9.0, 14.0, 19.0] { line(root, [.init(x: 1, y: y), .init(x: 5, y: y)]) }
+            for x in [9.0, 14.0, 19.0] { line(root, [.init(x: x, y: 1), .init(x: x, y: 5)]) }
+            circle(moved(0, -b), 15, 15, 11)
+            line(root, [.init(x: 25, y: 25), .init(x: 30, y: 30)], width: 3)
+        case .skills:
             rect(root, 5, 15, 22, 13, fill: true); rect(moved(0, -3 * b), 11, 11, 10, 5)
             let rays = moved(around: CGPoint(x: 16, y: 9), scaleX: 1 + 0.5 * b)
             line(rays, [.init(x: 16, y: 2), .init(x: 16, y: 7)])
@@ -203,13 +230,23 @@ struct WorkshopGlyph: View {
         case .contractors:
             rect(root, 4, 12, 24, 15, fill: true); rect(moved(0, -3 * b), 11, 6, 10, 6)
             line(root, [.init(x: 4, y: 18), .init(x: 28, y: 18)]); rect(root, 13, 16, 6, 6, radius: 1)
-        case .worklog, .daily:
-            rect(root, 6, 4, 21, 25, fill: true)
-            line(root, [.init(x: 11, y: 5), .init(x: 11, y: 28)])
-            for (index, y) in [11.0, 16.0, 21.0].enumerated() {
-                let reveal = GlyphMotion.lineReveal(index: index, phase: phase)
-                line(root, [.init(x: 15, y: y), .init(x: 15 + 7 * reveal, y: y)])
+        case .worklog:
+            rect(root, 6, 5, 21, 24)
+            rect(moved(0, -b), 11, 3, 11, 5, radius: 2, fill: true)
+            line(root, [.init(x: 11, y: 17), .init(x: 14, y: 20), .init(x: 22, y: 12)], width: 2.5)
+            line(root, [.init(x: 11, y: 25), .init(x: 21, y: 25)])
+        case .daily:
+            rect(root, 3, 5, 22, 23, radius: 2)
+            line(root, [.init(x: 25, y: 11), .init(x: 29, y: 11), .init(x: 29, y: 25), .init(x: 26, y: 28), .init(x: 9, y: 28)])
+            rect(root, 7, 9, 7, 7, radius: 1, fill: true)
+            for y in [10.0, 15.0, 20.0, 24.0] {
+                line(root, [.init(x: y < 18 ? 18 : 7, y: y), .init(x: 22, y: y)])
             }
+        case .shift:
+            rect(root, 4, 5, 18, 24)
+            let pencil = moved(0, -2 * b)
+            line(pencil, [.init(x: 14, y: 21), .init(x: 25, y: 6), .init(x: 29, y: 9), .init(x: 18, y: 24), .init(x: 13, y: 26), .init(x: 14, y: 21)], close: true)
+            line(root, [.init(x: 8, y: 10), .init(x: 14, y: 10)])
         case .contest:
             let wobble = 10 * sin(3 * .pi * phase) * (1 - phase)
             let cupContext = moved(rotate: phase > 0 && phase < 1 ? wobble : 0, around: CGPoint(x: 16, y: 28))
@@ -224,9 +261,14 @@ struct WorkshopGlyph: View {
             line(root, [.init(x: 7, y: 14), .init(x: 7, y: 28), .init(x: 25, y: 28), .init(x: 25, y: 14)])
             rect(root, 13, 19, 6, 9, radius: 1, fill: true)
         case .connection:
-            line(root, [.init(x: 16, y: 10), .init(x: 7, y: 24), .init(x: 25, y: 24), .init(x: 16, y: 10)])
-            circle(moved(0, -2 * b), 11, 2, 10, fill: true)
-            circle(root, 2, 21, 9); circle(root, 21, 21, 9)
+            let plug = moved(-2 * b)
+            rect(plug, 3, 9, 11, 14, radius: 3, fill: true)
+            line(plug, [.init(x: 14, y: 12), .init(x: 18, y: 12)])
+            line(plug, [.init(x: 14, y: 20), .init(x: 18, y: 20)])
+            line(plug, [.init(x: 3, y: 16), .init(x: 1, y: 16), .init(x: 1, y: 26)])
+            rect(root, 21, 7, 9, 18, radius: 3)
+            line(root, [.init(x: 25, y: 11), .init(x: 25, y: 13)])
+            line(root, [.init(x: 25, y: 19), .init(x: 25, y: 21)])
         case .advisor:
             rect(moved(0, -2 * b), 3, 5, 18, 13, radius: 4, fill: true)
             line(root, [.init(x: 7, y: 18), .init(x: 6, y: 22), .init(x: 12, y: 18)])

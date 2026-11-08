@@ -129,3 +129,29 @@ private func comparisonGit(_ args: [String], at directory: URL) throws {
     #expect(result.runs[1].status == "cancelled")
     #expect(!FileManager.default.fileExists(atPath: project.appendingPathComponent("partial.txt").path))
 }
+
+@Test func replacedSnapshotCannotInjectGitConfigurationIntoHostInspection() async throws {
+    let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".fawaly-snapshot-swap-" + UUID().uuidString)
+    let project = root.appendingPathComponent("project"), state = root.appendingPathComponent("state")
+    try Paths.ensurePrivateDirectory(project); defer { try? FileManager.default.removeItem(at: root) }
+    try Data("baseline".utf8).write(to: project.appendingPathComponent("base.txt"))
+    try comparisonGit(["init", "--quiet"], at: project); try comparisonGit(["add", "."], at: project); try comparisonGit(["commit", "--quiet", "-m", "fixture"], at: project)
+    let snapshots = ComparisonSnapshots(root: state)
+    let prepared = try await snapshots.prepare(project: project, agents: [.claude, .kimi])
+    let snapshot = try #require(prepared.snapshots[.kimi]), command = root.appendingPathComponent("worker-command")
+    try Paths.ensurePrivateDirectory(command)
+    let fake = command.appendingPathComponent("fake"), marker = root.appendingPathComponent("outside-executed")
+    try Paths.ensurePrivateDirectory(fake)
+    try comparisonGit(["init", "--quiet"], at: fake)
+    let script = command.appendingPathComponent("fsmonitor")
+    try Data(("#!/bin/sh\n/usr/bin/touch '" + marker.path + "'\nprintf '\\0'\n").utf8).write(to: script)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
+    try comparisonGit(["config", "core.fsmonitor", script.path], at: fake)
+    let invocation = AgentWorker.Invocation(program: URL(fileURLWithPath: "/bin/sh"), arguments: [], environment: [:])
+    let profile = command.appendingPathComponent("worker.sb")
+    try AgentWorker.sandboxProfile(invocation: invocation, directory: command, workspace: snapshot, codexHome: nil).write(to: profile, atomically: true, encoding: .utf8)
+    let output = try await WorkerProcess.run(program: "/usr/bin/sandbox-exec", arguments: ["-f", profile.path, "/bin/sh", "-c", "/bin/mv \"$1\" \"$2/saved\" && /bin/mv \"$2/fake\" \"$1\" && printf SWAPPED", "fixture", snapshot.path, command.path], environment: ["PATH": "/usr/bin:/bin"], directory: command, workingDirectory: command, prompt: "", timeout: 5)
+    #expect(String(decoding: output, as: UTF8.self) == "SWAPPED")
+    await #expect(throws: FawalyError.self) { try await snapshots.changedFiles(in: snapshot, directory: prepared.directory) }
+    #expect(!FileManager.default.fileExists(atPath: marker.path))
+}

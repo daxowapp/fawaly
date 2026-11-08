@@ -59,7 +59,7 @@ def main():
     run("xcodebuild", "-project", "Fawaly Rebuilt.xcodeproj", "-scheme", "Fawaly Rebuilt",
         "-configuration", "Release", "-destination", "generic/platform=macOS", "-derivedDataPath", derived,
         "ARCHS=arm64 x86_64", "ONLY_ACTIVE_ARCH=NO", "CODE_SIGNING_ALLOWED=NO", "build")
-    app = working / "Fawaly.app"
+    app = working / "Sudo Interns.app"
     run("ditto", "--noextattr", derived / "Build/Products/Release/Fawaly Rebuilt.app", app)
     for item in [app, *app.rglob("*")]:
         if item.is_symlink():
@@ -97,7 +97,7 @@ def main():
     run("xcrun", "stapler", "validate", app)
     run("spctl", "--assess", "--type", "execute", "--verbose=2", app)
     submission.unlink()
-    archive = output / f"Fawaly-{version}.zip"
+    archive = output / f"Sudo-Interns-{version}.zip"
     run("ditto", "-c", "-k", "--keepParent", app, archive)
     tools = list(derived.glob("SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update"))
     if len(tools) != 1:
@@ -111,11 +111,11 @@ def main():
         parser.error("Sparkle did not return an EdDSA signature.")
     image_folder = working / "Disk Image"
     image_folder.mkdir()
-    run("ditto", "--noextattr", app, image_folder / "Fawaly.app")
+    run("ditto", "--noextattr", app, image_folder / "Sudo Interns.app")
     (image_folder / "Applications").symlink_to("/Applications")
-    (image_folder / "Start Here.txt").write_text("Fawaly is free and open source.\nDrag Fawaly to Applications, then open it there.\nConnect accounts and prepare your team inside the app. No Terminal commands needed.\n\nالفواعلي مجاني ومفتوح المصدر.\nاسحب الفواعلي إلى Applications وافتحه من هناك.\nسجّل الدخول وجهّز فريقك من التطبيق؛ مش محتاج أوامر طرفية.\n\nhttps://daxow.com/fawaly\n", encoding="utf-8")
-    dmg = output / f"Fawaly-{version}.dmg"
-    run("hdiutil", "create", "-volname", "Fawaly", "-srcfolder", image_folder, "-format", "UDZO", dmg)
+    (image_folder / "Start Here.txt").write_text("Sudo Interns (Fawaly) is free and open source.\nDrag Sudo Interns to Applications, then open it there.\nConnect accounts and prepare your team inside the app. No Terminal commands needed.\n\nالفواعلي مجاني ومفتوح المصدر.\nاسحب الفواعلي إلى Applications وافتحه من هناك.\nسجّل الدخول وجهّز فريقك من التطبيق؛ مش محتاج أوامر طرفية.\n\nhttps://daxow.com/fawaly\n", encoding="utf-8")
+    dmg = output / f"Sudo-Interns-{version}.dmg"
+    run("hdiutil", "create", "-volname", "Sudo Interns", "-srcfolder", image_folder, "-format", "UDZO", dmg)
     run("codesign", "--timestamp", "--sign", identity, dmg)
     run("xcrun", "notarytool", "submit", dmg, "--keychain-profile", options.notary_profile, "--wait")
     run("xcrun", "stapler", "staple", dmg)
@@ -124,10 +124,10 @@ def main():
     ET.register_namespace("sparkle", ns)
     rss = ET.Element("rss", version="2.0")
     channel = ET.SubElement(rss, "channel")
-    ET.SubElement(channel, "title").text = "Fawaly signed updates"
+    ET.SubElement(channel, "title").text = "Sudo Interns signed updates"
     ET.SubElement(channel, "link").text = "https://daxow.com/fawaly"
     item = ET.SubElement(channel, "item")
-    ET.SubElement(item, "title").text = f"Fawaly {version}"
+    ET.SubElement(item, "title").text = f"Sudo Interns {version}"
     ET.SubElement(item, f"{{{ns}}}version").text = build
     ET.SubElement(item, f"{{{ns}}}shortVersionString").text = version
     ET.SubElement(item, f"{{{ns}}}minimumSystemVersion").text = "14.0"

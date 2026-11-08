@@ -4,7 +4,7 @@ Fawaly is free software under AGPL-3.0-or-later. The official app stays free. Pr
 
 ## First signed release
 
-The recovery preview is ad-hoc signed for local testing. It intentionally refuses in-app replacement. Install the first Developer ID signed, notarized release from [the Fawaly website](https://daxow.com/fawaly); subsequent updates use Sparkle 2.10.1 with the embedded Ed25519 public key. Update checks are manual, do not send workshop files, and never start while workers, comparisons or setup are active. An exclusive cross-process lease prevents new jobs until the update dialog finishes, or until a pending installation restarts the app.
+The installed local preview uses an Apple Development certificate for stable local identity; CI builds are ad-hoc signed. Neither is a Developer ID public release. It intentionally refuses in-app replacement. Install the first Developer ID signed, notarized release from [the Sudo Interns website](https://daxow.com/fawaly); subsequent updates use Sparkle 2.10.1 with the embedded Ed25519 public key. Update checks are manual, do not send workshop files, and never start while workers, comparisons or setup are active. An exclusive cross-process lease prevents new jobs until the update dialog finishes, or until a pending installation restarts the app.
 
 The publisher's update signing key was generated with Sparkle's official `generate_keys` tool and is stored in the login Keychain under account `com.daxow.fawaly.updates`. Only its public verification key is committed. Fork publishers must use their own key and feed. Keep a secure recovery copy of publisher signing material outside the repository.
 
@@ -23,7 +23,7 @@ The script builds every shipped executable for Apple Silicon and Intel, signs ne
 
 ## Installation and relocation
 
-Drag Fawaly to Applications and open it there. Native onboarding handles account sign-in and team connection. MCP uses a private stable launcher in the workshop data folder. Reconnecting migrates only Fawaly's exact previous registration or its own application bundle and preserves unrelated servers. A later launch repairs that launcher after a move, once work is idle. Connections from translocated apps, mounted disk images or temporary locations are refused with an Applications instruction.
+Drag Sudo Interns to Applications and open it there. Native onboarding handles account sign-in and team connection. MCP uses a private stable launcher in the workshop data folder. Reconnecting migrates only Fawaly's exact previous registration or its own application bundle and preserves unrelated servers. A later launch repairs that launcher after a move, once work is idle. Connections from translocated apps, mounted disk images or temporary locations are refused with an Applications instruction.
 
 The existing app bundle identifier and data folder remain unchanged so rebuilding does not erase accounts, roles, grants or history. Developer ID/Keychain access changes may require the user to approve access to an existing item or sign in again; there is no silent credential export.
 

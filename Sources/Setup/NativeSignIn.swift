@@ -37,6 +37,7 @@ struct NativeSignIn: Sendable {
     func signIn(_ agent: EngineAgent, region: KimiRegion = .global, onURL: @escaping @Sendable (URL) -> Void) async throws {
         let result = try await execute(command(agent, login: true, region: region), 600, onURL)
         guard result.exitCode == 0 else { throw FawalyError.invalid("Sign-in was not completed. You can retry from this screen.") }
+        try configuration.requireNativeSignIn(agent, required: false)
         if agent == .kimi { try configuration.recordNativeSignIn(agent, connected: true) }
         do {
             guard try await verify(agent) else { throw FawalyError.invalid("The service has not confirmed your sign-in yet.") }
@@ -48,6 +49,10 @@ struct NativeSignIn: Sendable {
 
     @discardableResult
     func verify(_ agent: EngineAgent) async throws -> Bool {
+        guard !configuration.requiresNativeSignIn(agent) else {
+            try configuration.recordNativeSignIn(agent, connected: false)
+            return false
+        }
         let result = try await execute(command(agent, login: false), 20, { _ in })
         let connected: Bool
         switch agent {
@@ -93,6 +98,20 @@ struct NativeSignIn: Sendable {
 }
 
 extension EngineConfiguration {
+    func requiresNativeSignIn(_ agent: EngineAgent) -> Bool {
+        let file = nativeAuthDirectory(agent).appendingPathComponent("fawaly-reauth-required.json")
+        var info = stat()
+        guard lstat(file.path, &info) == 0 else { return errno != ENOENT }
+        // Corrupt/link markers fail closed rather than reviving a rejected session.
+        return (try? JSONDecoder().decode(Bool.self, from: WorkerFiles.read(file, limit: 128))) ?? true
+    }
+
+    func requireNativeSignIn(_ agent: EngineAgent, required: Bool) throws {
+        guard agent.isNative else { return }
+        try prepareAuthDirectory(agent)
+        try JSONEncoder().encode(required).write(to: nativeAuthDirectory(agent).appendingPathComponent("fawaly-reauth-required.json"), options: .atomic)
+    }
+
     func nativeAuthDirectory(_ agent: EngineAgent) -> URL {
         root.appendingPathComponent("official", isDirectory: true).appendingPathComponent(agent.rawValue, isDirectory: true)
     }

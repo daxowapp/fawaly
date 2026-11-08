@@ -10,6 +10,8 @@ struct ComparisonSession: Codable, Identifiable, Equatable, Sendable {
         var started: Date?
         var finished: Date?
         var changedFiles: [String]?
+        var inventoryTruncated: Bool?
+        var inventoryIssue: String?
     }
     let id: UUID
     let project: String
@@ -30,7 +32,31 @@ struct ComparisonStore: Sendable {
     func save(_ session: ComparisonSession) throws {
         let folder = root.appendingPathComponent("comparisons/" + session.id.uuidString)
         try Paths.ensurePrivateDirectory(folder)
-        try JSONEncoder().encode(session).write(to: folder.appendingPathComponent("result.json"), options: .atomic)
+        var stored = session
+        for index in stored.runs.indices {
+            if let answer = stored.runs[index].answer { stored.runs[index].answer = ConsultRound.cap(answer).0 }
+            if let files = stored.runs[index].changedFiles {
+                var kept: [String] = [], bytes = 0
+                for file in files {
+                    let size = file.utf8.count
+                    guard kept.count < 1000, bytes + size <= 64 * 1024 else { break }
+                    kept.append(file); bytes += size
+                }
+                stored.runs[index].changedFiles = kept
+                if kept.count < files.count { stored.runs[index].inventoryTruncated = true }
+            }
+        }
+        var data = try JSONEncoder().encode(stored)
+        while data.count > 1_048_576, stored.runs.contains(where: { !($0.changedFiles ?? []).isEmpty }) {
+            for index in stored.runs.indices where !(stored.runs[index].changedFiles ?? []).isEmpty {
+                let files = stored.runs[index].changedFiles!
+                stored.runs[index].changedFiles = Array(files.prefix(files.count / 2))
+                stored.runs[index].inventoryTruncated = true
+            }
+            data = try JSONEncoder().encode(stored)
+        }
+        guard data.count <= 1_048_576 else { throw FawalyError.invalid("The comparison record is too large. The previous record was preserved.") }
+        try data.write(to: folder.appendingPathComponent("result.json"), options: .atomic)
     }
     func recent() throws -> [ComparisonSession] {
         let folder = root.appendingPathComponent("comparisons")
@@ -38,17 +64,14 @@ struct ComparisonStore: Sendable {
         return try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
             .filter { UUID(uuidString: $0.lastPathComponent) != nil }
             .compactMap { directory in
-                guard let data = try? Data(contentsOf: directory.appendingPathComponent("result.json")), data.count <= 1_048_576,
+                guard let data = try? WorkerFiles.read(directory.appendingPathComponent("result.json"), limit: 1_048_576),
                       let item = try? JSONDecoder().decode(ComparisonSession.self, from: data), item.id.uuidString == directory.lastPathComponent else { return nil }
                 return item
             }.sorted { $0.created > $1.created }
     }
     private func read(_ id: UUID) throws -> ComparisonSession? {
         let file = root.appendingPathComponent("comparisons/" + id.uuidString + "/result.json")
-        let handle = try FileHandle(forReadingFrom: file)
-        defer { try? handle.close() }
-        let data = try handle.read(upToCount: 1_048_577) ?? Data()
-        guard data.count <= 1_048_576 else { throw FawalyError.invalid("The comparison record is too large.") }
+        let data = try WorkerFiles.read(file, limit: 1_048_576)
         let session = try JSONDecoder().decode(ComparisonSession.self, from: data)
         return session.id == id ? session : nil
     }
@@ -152,17 +175,21 @@ struct ComparisonRunner: Sendable {
                 session.runs[index].answer = error.localizedDescription + " Review this snapshot for partial edits."
                 session.runs[index].status = "needs_review"
             }
-            let inventory = Task.detached {
-                try? await ComparisonSnapshots(root: configuration.root).changedFiles(in: snapshot, directory: copies.directory)
+            let inventory = Task.detached { () -> ([String]?, String?) in
+                do { return (try await ComparisonSnapshots(root: configuration.root).changedFiles(in: snapshot, directory: copies.directory), nil) }
+                catch { return (nil, "The file inventory could not be completed. Review the snapshot manually.") }
             }
-            session.runs[index].changedFiles = await inventory.value
+            let (files, issue) = await inventory.value
+            session.runs[index].changedFiles = files
+            session.runs[index].inventoryIssue = issue
+            if issue != nil { session.runs[index].succeeded = false }
             session.runs[index].finished = Date()
             try store.save(session)
             await progress(session)
         }
         try store.save(session)
         await progress(session)
-        return session
+        return try store.recent().first(where: { $0.id == session.id }) ?? session
     }
 }
 

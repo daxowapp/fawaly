@@ -2,7 +2,23 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+@MainActor
+final class SkillActivity: ObservableObject {
+    @Published var active: String?
+    @Published var feedback: String?
+    var operation: Task<Void, Never>?
+    var installing = false
+    func leavePage() {
+        // Installation survives navigation; preview downloads require a visible review sheet.
+        if !installing { operation?.cancel() }
+    }
+}
+
 struct SkillsPage: View {
+    @ObservedObject var activity: SkillActivity
+    private var active: String? { get { activity.active } nonmutating set { activity.active = newValue } }
+    private var feedback: String? { get { activity.feedback } nonmutating set { activity.feedback = newValue } }
+    private var operation: Task<Void, Never>? { get { activity.operation } nonmutating set { activity.operation = newValue } }
     @EnvironmentObject private var model: AppModel
     @State private var catalog: [SkillPackage] = []
     @State private var directory: URL?
@@ -10,9 +26,6 @@ struct SkillsPage: View {
     @State private var query = ""
     @State private var installedOnly = false
     @State private var review: SkillInstallPlan?
-    @State private var operation: Task<Void, Never>?
-    @State private var active: String?
-    @State private var feedback: String?
     @State private var picking = false
     @State private var scope = SkillInstallScope.project
     @State private var selecting: SkillPackage?
@@ -39,7 +52,7 @@ struct SkillsPage: View {
                         Spacer()
                         Button(model.text("اختار فولدر المشروع…", "Choose project folder…")) { chooseProject() }.disabled(active != nil || picking)
                     }
-                    if let directory { Text(directory.path).font(.caption.monospaced()).textSelection(.enabled) }
+                    if let directory { Text(directory.path).font(.caption.monospaced()).textSelection(.enabled).environment(\.layoutDirection, .leftToRight) }
                     } else { Text(model.text("حسابك على الماك · Codex وClaude Code. ملاحظات كل مشروع تفضل منفصلة.", "Your Mac account · Codex and Claude Code. Each project's notes remain separate.")).font(.caption).foregroundStyle(.secondary) }
                     TextField(model.text("ابحث عن Skill أو صاحبها", "Search skills or authors"), text: $query).textFieldStyle(.roundedBorder)
                     Toggle(model.text("اعرض المتسطّبة والموجودة بس", "Show installed and detected only"), isOn: $installedOnly)
@@ -64,14 +77,14 @@ struct SkillsPage: View {
                             if item.stars > 0 { Label(item.stars.formatted(), systemImage: "star") }
                         }.font(.caption).foregroundStyle(.secondary)
                         Text(model.text("لقطة GitHub: \(item.checked) · إصدار \(item.revision.prefix(8))", "GitHub snapshot: \(item.checked) · revision \(item.revision.prefix(8))")).font(.caption2).foregroundStyle(.secondary)
-                        if item.hasScripts || item.hasHooks { Label(model.text("يتضمن سكربتات أو Hooks؛ راجعها قبل التثبيت", "Includes scripts or hooks; review before installing"), systemImage: "info.circle").font(.caption).foregroundStyle(.orange) }
+                        if item.hasScripts || item.hasHooks { Label(model.text("يتضمن سكربتات أو Hooks؛ راجعها قبل التثبيت", "Includes scripts or hooks; review before installing"), systemImage: "info.circle").font(.caption).foregroundStyle(Workshop.warning) }
                         HStack {
                             Button(model.text("المصدر والكريدت", "Source & credit")) { NSWorkspace.shared.open(item.sourceURL) }.buttonStyle(.link).tint(.blue)
                             Spacer()
                             Button([.installed, .modified, .external].contains(statuses[item.id] ?? .absent) ? model.text("اختيار نطاق التثبيت…", "Choose installation scope…") : statuses[item.id] == .incomplete ? model.text("راجع وأكمل التثبيت…", "Review and resume…") : model.text("راجع وثبّت…", "Review & install…")) { selecting = item }
                                 .buttonStyle(WorkshopPrimaryButtonStyle())
                                 .disabled(active != nil || model.busy || model.setup.busy)
-                                .accessibilityLabel(model.text("راجع وثبّت \(item.name)", "Review and install \(item.name)"))
+                                .accessibilityLabel(actionLabel(item) + " " + item.title(model.arabic))
                         }
                     }
                 }
@@ -92,7 +105,8 @@ struct SkillsPage: View {
         .onAppear {
             do { catalog = try SkillPackage.catalog(); if directory == nil { directory = model.state.projectDirectory }; reload() } catch { model.report(error) }
         }
-        .onDisappear { operation?.cancel() }
+        .onDisappear { activity.leavePage() }
+        .onChange(of: activity.active) { _, _ in reload() }
         .onChange(of: scope) { _, _ in reload() }
         .sheet(item: $selecting, onDismiss: {
             if let choice = pendingChoice { pendingChoice = nil; prepare(choice) }
@@ -105,6 +119,13 @@ struct SkillsPage: View {
         }
         .sheet(isPresented: Binding(get: { review != nil }, set: { if !$0 { review = nil } })) {
             if let review { SkillReviewSheet(plan: review, directory: review.directory, arabic: model.arabic, cancel: { self.review = nil }, install: { install(review) }) }
+        }
+    }
+    private func actionLabel(_ item: SkillPackage) -> String {
+        switch statuses[item.id] ?? .absent {
+        case .installed, .modified, .external: model.text("اختيار نطاق التثبيت", "Choose installation scope")
+        case .incomplete: model.text("راجع وأكمل التثبيت", "Review and resume")
+        default: model.text("راجع وثبّت", "Review and install")
         }
     }
     private func statusLabel(_ status: ProjectSkills.Status) -> String {
@@ -149,9 +170,10 @@ struct SkillsPage: View {
         }
     }
     private func install(_ plan: SkillInstallPlan) {
+        activity.installing = true
         review = nil; active = model.text("بثبّت \(plan.package.name)…", "Installing \(plan.package.name)…")
         operation = Task {
-            defer { active = nil; operation = nil; reload() }
+            defer { activity.installing = false; active = nil; operation = nil; reload() }
             do {
                 let lease = try WorkActivityLease(root: model.dataDirectory)
                 defer { withExtendedLifetime(lease) {} }
@@ -206,19 +228,19 @@ private struct SkillScopeSheet: View {
                     Spacer()
                     Button(text("اختار فولدر المشروع…", "Choose project folder…")) { picking = true }
                 }
-                if let directory { Text(directory.path).font(.caption.monospaced()).textSelection(.enabled) }
+                if let directory { Text(directory.path).font(.caption.monospaced()).textSelection(.enabled).environment(\.layoutDirection, .leftToRight) }
                 Text(text("التثبيت هيتطبق على فولدر المشروع ده بس.", "The installation applies only to this project folder.")).font(.caption).foregroundStyle(.secondary)
             }
             if let issue { Text(issue).font(.caption).foregroundStyle(.red) }
             if [.installed, .modified, .external].contains(existing) {
-                Text(text("المهارة موجودة بالفعل في النطاق ده وملفاتها هتفضل محفوظة. تقدر تختار نطاقًا تاني أو مشروعًا مختلفًا.", "This scope already has this package; existing files are preserved. Choose another scope or project.")).font(.caption).foregroundStyle(.orange)
+                Text(text("المهارة موجودة بالفعل في النطاق ده وملفاتها هتفضل محفوظة. تقدر تختار نطاقًا تاني أو مشروعًا مختلفًا.", "This scope already has this package; existing files are preserved. Choose another scope or project.")).font(.caption).foregroundStyle(Workshop.warning)
             }
             Text(text("بعد اختيار المكان، هتراجع الملفات والتداخلات قبل التثبيت.", "Next, review the files and overlaps before anything is installed.")).font(.caption).foregroundStyle(.secondary)
             HStack {
                 Button(text("إلغاء", "Cancel"), action: cancel).keyboardShortcut(.cancelAction)
                 Spacer()
                 Button(text("متابعة للمراجعة", "Continue to review")) { selected(scope, directory) }
-                    .buttonStyle(WorkshopPrimaryButtonStyle()).disabled(!canContinue)
+                    .buttonStyle(WorkshopPrimaryButtonStyle()).keyboardShortcut(.defaultAction).disabled(!canContinue)
             }
         }.padding(24).frame(width: 610).environment(\.layoutDirection, arabic ? .rightToLeft : .leftToRight)
             .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { result in
@@ -245,17 +267,17 @@ private struct SkillReviewSheet: View {
                     Label(plan.scope == .allProjects ? text("التثبيت لكل المشاريع على الماك", "Installing for all local projects") : text("التثبيت لمشروع محدد", "Installing in a specific project"), systemImage: plan.scope == .allProjects ? "globe" : "folder").font(.headline)
                     Link(plan.package.repo, destination: plan.package.sourceURL)
                     Text("\(plan.package.author) · \(plan.package.license) · \(plan.package.revision)").font(.caption).textSelection(.enabled)
-                    Text(directory.path).font(.caption.monospaced()).textSelection(.enabled)
+                    Text(directory.path).font(.caption.monospaced()).textSelection(.enabled).environment(\.layoutDirection, .leftToRight)
                     Text(plan.scope == .allProjects
                          ? text("هنضيف السكيلز العامة لحسابك وقسمًا منفصلًا في تعليمات Claude وCodex العامة. ملفات المشاريع مش هتتعدّل. تعليماتك القديمة هتفضل محفوظة، مع نسخة قبل الإضافة. مش هنعدّل إعدادات MCP أو Hooks ولا نشغّل سكربتات أثناء التثبيت.", "Adds user-level skills and a separate section in Claude and Codex global instruction files. Project files stay untouched. Existing instructions are preserved and backed up. MCP/hook settings are not edited and scripts are not run during installation.")
                          : text("هنضيف ملفات السكيل للمشروع وقسمًا منفصلًا في CLAUDE.md وAGENTS.md. المحتوى القديم هيفضل كما هو، ونسخة منه تتخزن قبل الإضافة. مش هنعدل إعدادات MCP أو Hooks الحالية، ولا نشغّل سكربتات أثناء التثبيت.", "Adds project skill files and a separate section in CLAUDE.md and AGENTS.md. Existing content stays intact and is backed up before appending. Existing MCP/hook settings are not edited and scripts are not run during installation.")).font(.callout)
                     if !plan.warnings.isEmpty {
-                        Label(text("تداخلات ومتطلبات محتاجة مراجعتك", "Overlaps and requirements to review"), systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                        Label(text("تداخلات ومتطلبات محتاجة مراجعتك", "Overlaps and requirements to review"), systemImage: "exclamationmark.triangle").foregroundStyle(Workshop.warning)
                         ForEach(plan.warnings, id: \.self) { warning in Text(localize(warning)).font(.caption) }
                     }
                     ForEach(plan.package.requirements, id: \.self) { Text(localizeRequirement($0)).font(.caption).foregroundStyle(.secondary) }
                     DisclosureGroup(text("الملفات اللي هتتضاف أو تتحدّث: \(plan.writes.count)", "Files to add or update: \(plan.writes.count)")) {
-                        ForEach(plan.writes, id: \.path) { Text($0.path).font(.caption.monospaced()).frame(maxWidth: .infinity, alignment: .leading) }
+                        ForEach(plan.writes, id: \.path) { Text($0.path).font(.caption.monospaced()).environment(\.layoutDirection, .leftToRight).frame(maxWidth: .infinity, alignment: .leading) }
                     }
                     Text(text("معاينة التعليمات الأصلية", "Original instructions preview")).font(.headline)
                     Text(plan.preview).font(.system(.caption, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).environment(\.layoutDirection, .leftToRight)

@@ -64,7 +64,7 @@ struct OnboardingView: View {
                 }
             }
             if setup.selected.contains(where: { if case .failed = setup.phases[$0] { return true }; return false }) {
-                Text(model.text("التجهيز ما اكتملش. راجع اتصال الإنترنت واضغط جهّز الخدمات للمحاولة تاني.", "Preparation could not finish. Check your internet connection and choose Prepare services to retry.")).font(.caption).foregroundStyle(.orange)
+                Text(model.text("التجهيز ما اكتملش. راجع اتصال الإنترنت واضغط جهّز الخدمات للمحاولة تاني.", "Preparation could not finish. Check your internet connection and choose Prepare services to retry.")).font(.caption).foregroundStyle(Workshop.warning)
             }
             Text(model.text(
                 "لو خدمة ناقصة، هننزّل نسختها الرسمية ونتحقق منها. التجهيز جوّه حسابك على الماك ومش محتاج كلمة سر المدير.",
@@ -96,7 +96,7 @@ struct OnboardingView: View {
                 Text(issue.contains("different Fawaly")
                      ? model.text("في ربط سابق للفواعلي محتاج مراجعة من إعدادات الأجنت.", "An existing Fawaly connection needs review in your agent’s settings.")
                      : model.text("الربط ما اكتملش. تأكد إن إعدادات الأجنت متاحة واضغط وصّل الفريق للمحاولة تاني.", "Connection did not complete. Check that your agent’s settings are available, then retry Connect team."))
-                    .font(.caption).foregroundStyle(.orange)
+                    .font(.caption).foregroundStyle(Workshop.warning)
             }
         }
     }
@@ -186,7 +186,7 @@ struct ConnectionList: View {
                     ServiceAccessLinks(agent: agent, arabic: model.arabic, region: setup.kimiRegion)
                     if case .failed(let issue) = setup.phases[agent] {
                         Text(model.text("الربط ما اكتملش. جرّب تاني، أو ارجع لتجهيز الخدمات.", "Connection was not completed. Try again, or return to service preparation."))
-                            .font(.caption).foregroundStyle(.orange)
+                            .font(.caption).foregroundStyle(Workshop.warning)
                         if issue.contains("timed out") { Text(model.text("انتهى وقت الانتظار.", "The sign-in timed out.")).font(.caption) }
                     }
                     if agent == .kimi && setup.phases[agent] != .connected {

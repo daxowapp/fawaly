@@ -80,6 +80,7 @@ struct EngineConfiguration: Sendable {
 
     func isReady(_ agent: EngineAgent) -> Bool {
         if !agent.isNative { return (try? APIAssistantStore(root: root).load(agent)).map { $0.enabled && ($0.local || APIAssistantKeychain.contains($0)) } ?? false }
+        guard !requiresNativeSignIn(agent) else { return false }
         guard agent.executable(root: root) != nil else { return false }
         switch agent {
         case .codex:

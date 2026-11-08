@@ -61,6 +61,7 @@ enum EngineCLI {
                 process.standardError = FileHandle.standardError
                 try process.run()
                 process.waitUntilExit()
+                if process.terminationStatus == 0 { try configuration.requireNativeSignIn(.codex, required: false) }
                 return process.terminationStatus
             case "claude-setup-token":
                 guard let executable = EngineAgent.claude.executable() else { throw FawalyError.invalid("Install the Claude Code CLI first.") }

@@ -88,6 +88,18 @@ enum ArtScenes {
     static func idle(for artwork: String) -> IdleStyle { artwork == "shift" ? .step : .breathe }
     static func effects(for artwork: String) -> [PlacedEffect] {
         switch artwork {
+        case "home-v2":
+            return [PlacedEffect(effect: .glint, anchor: UnitPoint(x: 0.75, y: 0.71))]
+        case "connection-v2":
+            return [PlacedEffect(effect: .spark, anchor: UnitPoint(x: 0.50, y: 0.47))]
+        case "advisor-v2":
+            return [PlacedEffect(effect: .glint, anchor: UnitPoint(x: 0.36, y: 0.42))]
+        case "skills-v2":
+            return [PlacedEffect(effect: .glint, anchor: UnitPoint(x: 0.82, y: 0.22))]
+        case "daily-v2":
+            return [PlacedEffect(effect: .thought, anchor: UnitPoint(x: 0.75, y: 0.13))]
+        case "composer-v2":
+            return [PlacedEffect(effect: .scribble, anchor: UnitPoint(x: 0.77, y: 0.44))]
         case "shift":
             return [PlacedEffect(effect: .dust, anchor: UnitPoint(x: 0.16, y: 0.95)), PlacedEffect(effect: .dust, anchor: UnitPoint(x: 0.42, y: 0.94), delay: 0.4),
                     PlacedEffect(effect: .dust, anchor: UnitPoint(x: 0.74, y: 0.96), delay: 0.8), PlacedEffect(effect: .check, anchor: UnitPoint(x: 0.86, y: 0.20))]

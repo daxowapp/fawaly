@@ -1,8 +1,10 @@
+> Latest production audit: build26, 156 passing tests, distinct per-screen scenes and Claude UI/UX collaboration. [Production readiness and remaining release gates](Production-Readiness.md). Public notarized distribution remains blocked.
+
 # Verification and current limits
 
 ## Build 22 — Sudo Interns / الفواعلي — 2026-11-08
 
-**142 app-hosted tests passed** in the final suite. This includes an MCP initialization regression across both supported legacy/current protocol versions and saved Arabic/English choices: the integration advertises **الفواعلي (Fawaly)** or **Sudo Interns (Fawaly)** while preserving tool identifiers and team configuration. Display metadata is sent when a client connects; an already-open client may retain its earlier name until reconnecting.
+**156 app-hosted tests passed** in the final suite. This includes an MCP initialization regression across both supported legacy/current protocol versions and saved Arabic/English choices: the integration advertises **الفواعلي (Fawaly)** or **Sudo Interns (Fawaly)** while preserving tool identifiers and team configuration. Display metadata is sent when a client connects; an already-open client may retain its earlier name until reconnecting.
 
 The app now starts new workshops in English, keeps existing language choices, uses **Sudo Interns** in English and **الفواعلي** in Arabic, and shares a bilingual workshop voice. Functional labels, permission scope and billing facts remain explicit. Developer Daily adds official publisher feeds, attributed dates/links, source/topic filters, a durable local reading list and a copied review/trial brief without automatic AI usage. New tests cover hostile RSS/Atom, CDATA, date filtering, deduplication, partial failures, local cache isolation and bookmark retention.
 
