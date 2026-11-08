@@ -2,10 +2,10 @@ import AppKit
 import SwiftUI
 
 enum AppPage: String, CaseIterable, Identifiable {
-    case home, shift, advisor, contractors, worklog, usage, settings, hires, contest, connection, rules
+    case home, shift, advisor, contractors, worklog, usage, settings, hires, contest, connection, rules, skills
 
     var id: Self { self }
-    static let navigation: [Self] = [.home, .connection, .rules, .advisor, .contractors, .worklog, .usage, .hires, .contest, .settings]
+    static let navigation: [Self] = [.home, .connection, .rules, .advisor, .contractors, .skills, .worklog, .usage, .hires, .contest, .settings]
 
     func title(_ arabic: Bool) -> String {
         switch self {
@@ -19,6 +19,7 @@ enum AppPage: String, CaseIterable, Identifiable {
         case .usage: arabic ? "الاستخدام والحدود" : "Usage & limits"
         case .settings: arabic ? "الإعدادات" : "Settings"
         case .hires: arabic ? "موديلات المساعدين" : "Assistant models"
+        case .skills: "Skills"
         case .contest: arabic ? "مقارنة المساعدين" : "Compare assistants"
         }
     }

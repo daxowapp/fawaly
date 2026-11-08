@@ -121,6 +121,7 @@ struct WorkshopWindow: View {
                                 case .hires: WorkerModelsPage()
                                 case .contest: ComparisonPage()
                                 case .contractors: services
+                                case .skills: SkillsPage()
                                 case .settings: settings
                                 case .usage: UsagePage()
                                 default: home
@@ -172,6 +173,7 @@ struct WorkshopWindow: View {
         case .connection: subtitle = model.text("اربط الأساسي بفريقك وافتح محادثتك المعتادة.", "Connect your primary to the team and open your usual chat.")
         case .rules: subtitle = model.text("ترتيب العمال ومهل التنفيذ وسياسة المستشار.", "Worker order, execution timeouts and advisor policy.")
         case .hires: subtitle = model.text("افحص بيانات الموديلات الرسمية المحفوظة محليًا.", "Inspect locally cached official model data.")
+        case .skills: subtitle = model.text("سكيلز وذاكرة مشروع وقوالب تعليمات، مع الكريدت وفحص التداخل قبل التثبيت.", "Project skills, memory and instruction templates, with credit and overlap checks before installation.")
         case .contest: subtitle = model.text("نفس المهمة في نسختين منفصلتين، والمراجعة قبل اختيار النتيجة.", "The same task in separate snapshots, reviewed before choosing a result.")
         case .usage: subtitle = model.text("أعداد المهام والاستشارات المحفوظة على الماك.", "Counts of tasks and consultations saved on this Mac.")
         case .settings: subtitle = model.text("اللغة وتخزين الورشة.", "Workshop language and storage.")

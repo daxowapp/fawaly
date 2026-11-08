@@ -78,6 +78,7 @@ struct AgentWorker: Sendable {
         }
         let workerLocks = try configuration.lockWorker(agent, workspace: authorizedWorkspace)
         defer { workerLocks.forEach { close($0) } }
+        let prompt = ProjectSkillsContext.enrich(prompt, workspace: authorizedWorkspace)
         if !agent.isNative {
             guard let assistant = try APIAssistantStore(root: configuration.root).load(agent), assistant.enabled else { throw FawalyError.invalid("Connect this assistant in Fawaly first.") }
             let preference = WorkerContext.modelPreference

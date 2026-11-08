@@ -66,6 +66,7 @@ import Testing
         let data: [[String: Any]] = [
             ["id": "vendor/tool-model", "supported_parameters": ["tools"], "architecture": ["output_modalities": ["text"]]],
             ["id": "vendor/chat-only", "supported_parameters": [], "architecture": ["output_modalities": ["text"]]],
+            ["id": "vendor/async-only:batch", "supported_parameters": ["tools"], "architecture": ["output_modalities": ["text"]]],
             ["id": "vendor/image-only", "supported_parameters": ["tools"], "architecture": ["output_modalities": ["image"]]]]
         return (try JSONSerialization.data(withJSONObject: ["data": data]), 200)
     }

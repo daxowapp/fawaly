@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 extension AppPage {
-    var artwork: String { self == .hires ? "discovery" : self == .connection ? "contractors" : self == .rules ? "shift" : rawValue }
+    var artwork: String { [.hires, .skills].contains(self) ? "discovery" : self == .connection ? "contractors" : self == .rules ? "shift" : rawValue }
     var hasArtwork: Bool { self != .home && self != .advisor }
 }
 
@@ -194,7 +194,7 @@ struct WorkshopGlyph: View {
             rect(root, 5, 17, 22, 10, fill: true); line(root, [.init(x: 6, y: 22), .init(x: 26, y: 22)])
             let coin = moved(0, -6 * b, around: CGPoint(x: 16, y: 10), scaleX: phase > 0 && phase < 1 ? cos(2 * .pi * phase) : 1)
             circle(coin, 11, 5, 10, fill: true); line(coin, [.init(x: 16, y: 8), .init(x: 16, y: 12)])
-        case .hires:
+        case .hires, .skills:
             rect(root, 5, 15, 22, 13, fill: true); rect(moved(0, -3 * b), 11, 11, 10, 5)
             let rays = moved(around: CGPoint(x: 16, y: 9), scaleX: 1 + 0.5 * b)
             line(rays, [.init(x: 16, y: 2), .init(x: 16, y: 7)])

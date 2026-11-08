@@ -38,7 +38,7 @@ struct APIAssistant: Codable, Equatable, Sendable {
         case .ollama: .init(agent: agent, endpoint: URL(string: "http://localhost:11434/v1/chat/completions")!, model: "", format: .openAI)
         case .lmstudio: .init(agent: agent, endpoint: URL(string: "http://localhost:1234/v1/chat/completions")!, model: "", format: .openAI)
         case .anthropicAPI: .init(agent: agent, endpoint: URL(string: "https://api.anthropic.com/v1/messages")!, model: "", format: .anthropic)
-        default: .init(agent: agent, endpoint: URL(string: "https://api.example.com/v1/chat/completions")!, model: "", format: .openAI)
+        default: .init(agent: agent, endpoint: URL(string: "https://api.openai.com/v1/chat/completions")!, model: "", format: .openAI)
         }
     }
 }

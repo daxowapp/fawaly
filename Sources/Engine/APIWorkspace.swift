@@ -68,6 +68,20 @@ final class APIWorkspace {
         if let bodyError { throw bodyError }
         if let coordinationError { throw coordinationError }
     }
+    /// Preserve executable helpers from a verified skill manifest without executing them.
+    func markExecutable(_ path: String, expectedDigest: String) throws {
+        let (parent, name) = try parent(path)
+        defer { close(parent) }
+        let fd = openat(parent, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard fd >= 0 else { throw failure }
+        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        defer { try? handle.close() }
+        var info = stat()
+        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_nlink == 1,
+              info.st_size <= Self.limit, info.st_flags & UInt32(SF_DATALESS) == 0 else { throw failure }
+        let bytes = try handle.read(upToCount: Self.limit + 1) ?? Data()
+        guard bytes.count <= Self.limit, Self.digest(bytes) == expectedDigest, fchmod(fd, 0o700) == 0 else { throw failure }
+    }
     private func writeAnchored(_ path: String, content: String, expectedDigest: String) throws {
         let data = Data(content.utf8)
         guard data.count <= Self.limit else { throw failure }

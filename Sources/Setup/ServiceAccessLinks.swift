@@ -11,7 +11,7 @@ struct ServiceAccessLinks: View {
             ForEach(links, id: \.url) { item in
                 Link(item.label, destination: item.url)
             }
-        }.font(.caption)
+        }.font(.caption).tint(.blue)
     }
     private struct Item { let label: String; let url: URL }
     private func link(_ ar: String, _ en: String, _ url: String) -> Item { Item(label: text(ar, en), url: URL(string: url)!) }

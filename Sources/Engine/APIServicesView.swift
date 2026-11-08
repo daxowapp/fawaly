@@ -14,7 +14,7 @@ struct APIServicesView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             Text(agent.label).font(.callout.weight(.semibold))
-                            ServiceAccessLinks(agent: agent, arabic: model.arabic, endpoint: [.openAIAPI, .anthropicAPI].contains(agent) ? nil : APIAssistant.preset(agent).endpoint)
+                            ServiceAccessLinks(agent: agent, arabic: model.arabic, endpoint: APIAssistant.preset(agent).endpoint)
                         }
                         Spacer()
                         Button(model.text("إضافة…", "Add…")) { configure(agent) }.disabled(model.busy || model.setup.busy).accessibilityLabel(model.text("إضافة \(agent.label)", "Add \(agent.label)"))
@@ -74,7 +74,7 @@ struct APIServiceEditor: View {
             }
             ServiceAccessLinks(agent: agent, arabic: arabic, endpoint: URL(string: endpoint))
             if agent == .openrouter {
-                Button(text("تسجيل الدخول إلى OpenRouter…", "Sign in to OpenRouter…")) { signInToOpenRouter() }
+                Button(text("تسجيل الدخول إلى OpenRouter…", "Sign in to OpenRouter…")) { signInToOpenRouter() }.buttonStyle(WorkshopPrimaryButtonStyle())
                 Text(text("اربط من المتصفح أو أدخل مفتاحك. الطلبات تُحسب من رصيد OpenRouter، وليس اشتراكات المواقع الأخرى. القائمة تعرض موديلات نصية تدعم أدوات الفواعلي، ومفيش اختيار تلقائي لموديل بديل.", "Connect in your browser or enter a key. Requests use your OpenRouter credits, not other website subscriptions. The list shows text models supporting Fawaly's tools. No alternative model is selected automatically.")).font(.caption).foregroundStyle(.secondary)
                 if let signInFeedback { Text(signInFeedback).font(.caption) }
             }

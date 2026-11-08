@@ -219,6 +219,7 @@ struct APIWorker: Sendable {
         let entries = (object["data"] as? [[String: Any]]) ?? []
         let compatible = entries.filter { entry in
             guard assistant.agent == .openrouter else { return true }
+            guard let id = entry["id"] as? String, !id.hasSuffix(":batch") else { return false }
             let outputs = (entry["architecture"] as? [String: Any])?["output_modalities"] as? [String] ?? []
             return (entry["supported_parameters"] as? [String] ?? []).contains("tools") && outputs.contains("text")
         }
