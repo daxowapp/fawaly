@@ -168,7 +168,7 @@ struct WorkshopWindow: View {
         case .home: subtitle = model.text("جهّز فريقك وتابع شغله، وكمّل محادثتك مع الأجنت الأساسي.", "Set up your team, follow its work, and keep chatting with your primary agent.")
         case .shift: subtitle = model.text("اكتب مهمة وجرّبها محليًا أو اطلب رد نصي من خدمة ربطتها.", "Queue work for a local preview or request a text result from a connected service.")
         case .worklog: subtitle = model.text("نتائج المهام المحفوظة في الورشة دي.", "Task results saved in this workshop.")
-        case .contractors: subtitle = model.text("حسابات الخدمات الأصلية وتسجيل الدخول المحفوظ.", "Native provider accounts and saved sign-in.")
+        case .contractors: subtitle = model.text("حساباتك والمساعدون المرتبطون. أضف خدمة وعيّن دورها في الفريق.", "Your connected accounts and assistants. Add a service and assign its team role.")
         case .connection: subtitle = model.text("اربط الأساسي بفريقك وافتح محادثتك المعتادة.", "Connect your primary to the team and open your usual chat.")
         case .rules: subtitle = model.text("ترتيب العمال ومهل التنفيذ وسياسة المستشار.", "Worker order, execution timeouts and advisor policy.")
         case .hires: subtitle = model.text("افحص بيانات الموديلات الرسمية المحفوظة محليًا.", "Inspect locally cached official model data.")

@@ -20,7 +20,7 @@ enum EngineAgent: String, CaseIterable, Codable, Sendable {
         case .codex: "Codex"
         case .claude: "Claude Code"
         case .kimi: "Kimi"
-        case .zai: "Z.AI"
+        case .zai: "Z.AI (GLM)"
         case .minimax: "MiniMax"
         case .deepseek: "DeepSeek"
         case .anthropicAPI: "Anthropic-compatible API"

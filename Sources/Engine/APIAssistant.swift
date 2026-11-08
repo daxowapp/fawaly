@@ -28,7 +28,7 @@ struct APIAssistant: Codable, Equatable, Sendable {
     }
     static func preset(_ agent: EngineAgent) -> Self {
         switch agent {
-        case .zai: .init(agent: agent, endpoint: URL(string: "https://api.z.ai/api/anthropic/v1/messages")!, model: "glm-5.3", format: .anthropic)
+        case .zai: .init(agent: agent, endpoint: URL(string: "https://api.z.ai/api/paas/v4/chat/completions")!, model: "glm-5.3", format: .openAI)
         case .minimax: .init(agent: agent, endpoint: URL(string: "https://api.minimax.io/anthropic/v1/messages")!, model: "MiniMax-M3.1-Flash", format: .anthropic)
         case .deepseek: .init(agent: agent, endpoint: URL(string: "https://api.deepseek.com/chat/completions")!, model: "deepseek-flash", format: .openAI)
         case .ollama: .init(agent: agent, endpoint: URL(string: "http://localhost:11434/v1/chat/completions")!, model: "", format: .openAI)
