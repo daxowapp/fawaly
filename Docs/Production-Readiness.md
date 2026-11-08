@@ -77,3 +77,11 @@ MiniMax M3.1 Flash now uses medium thinking effort with the existing 4,096-token
 The installed interface also reproduced a mascot disappearing after appearance/activation changes: a paused animation timeline could retain an old transparent entrance frame. Resting scenes now render from the current time outside the paused timeline. This changes decorative rendering only.
 
 Build 27's full 156-test suite passed on native hosted ARM64 and x86_64 macOS 26 runners, with explicit host-architecture assertions, as did the public-history secret scan: [CI run](https://github.com/daxowapp/fawaly/actions/runs/42526939283). The final build 28 matrix is tracked separately below when completed.
+
+## Installed acceptance follow-up — build 29
+
+All twelve navigation entries opened successfully in build 28, and the thirteenth task-composer section had passed the earlier acceptance. English/light and Arabic/dark settings were checked again. The fixed mascot remained visible after appearance/activation changes. Native accessibility text exposes article titles and skill names on repeated actions.
+
+With macOS Keyboard navigation temporarily enabled, Tab reached the header and sidebar and Space opened Home. This exposed a real scrolling defect: focus could move to a sidebar button outside the visible scroll area. Build 29 tracks sidebar focus and scrolls the focused destination into view. The original keyboard-navigation preference is restored after acceptance. The truncation regression also now includes an Anthropic truncated tool-use response; all 157 local tests pass.
+
+A new real MiniMax text-only review succeeded with medium effort on build 28. The actual Claude primary independently checked the cited worker code and recorded an accepted review; the installed Home screen displayed it. This is evidence for that bounded request, not a claim that every prompt/model will complete. Missing or unknown provider finish reasons remain a compatibility limitation. No automatic retry, fallback or increased output budget was used.

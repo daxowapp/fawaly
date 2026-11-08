@@ -54,6 +54,7 @@ struct WorkshopWindow: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.openWindow) private var openWindow
     @State private var page: AppPage? = .home
+    @FocusState private var sidebarFocus: AppPage?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -80,6 +81,7 @@ struct WorkshopWindow: View {
                         Text(model.text("والفواعلي ينفّذوا", "Fawaly executes")).font(.caption).foregroundStyle(.secondary)
                     }
                 }.padding(.horizontal, 14).padding(.top, 18)
+                ScrollViewReader { sidebar in
                 ScrollView {
                     VStack(spacing: 5) {
                         ForEach(AppPage.navigation) { item in
@@ -91,9 +93,14 @@ struct WorkshopWindow: View {
                                 }.padding(.horizontal, 12).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)
                                     .background((page == item || (page == .shift && item == .worklog)) ? Workshop.yellow.opacity(0.23) : .clear, in: RoundedRectangle(cornerRadius: 12))
                                     .contentShape(Rectangle())
-                            }.buttonStyle(.plain).accessibilityLabel(item.title(model.arabic)).accessibilityAddTraits((page == item || (page == .shift && item == .worklog)) ? .isSelected : [])
+                            }.buttonStyle(.plain).focused($sidebarFocus, equals: item).id(item)
+                                .accessibilityLabel(item.title(model.arabic)).accessibilityAddTraits((page == item || (page == .shift && item == .worklog)) ? .isSelected : [])
                         }
                     }.padding(.horizontal, 10)
+                }
+                .onChange(of: sidebarFocus) { _, focused in
+                    if let focused { sidebar.scrollTo(focused, anchor: .center) }
+                }
                 }
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "mug.fill").foregroundStyle(Workshop.yellow).font(.title2)

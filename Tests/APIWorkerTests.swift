@@ -45,7 +45,8 @@ private func apiProfile(format: APIAssistant.Format = .openAI) -> APIAssistant {
     let fixtures: [(APIAssistant.Format, [String: Any])] = [
         (.openAI, ["choices": [["finish_reason": "length", "message": ["content": "partial answer"]]]]),
         (.openAI, ["choices": [["finish_reason": "length", "message": ["tool_calls": [["id": "cut-call", "function": ["name": "write_file", "arguments": arguments]]]]]]]),
-        (.anthropic, ["stop_reason": "max_tokens", "content": [["type": "text", "text": "partial answer"]]])
+        (.anthropic, ["stop_reason": "max_tokens", "content": [["type": "text", "text": "partial answer"]]]),
+        (.anthropic, ["stop_reason": "max_tokens", "content": [["type": "tool_use", "id": "cut-call", "name": "write_file", "input": ["path": "partial.txt", "content": "must not be written", "expected_sha256": ""]]]])
     ]
     for (format, reply) in fixtures {
         let fixture = APIFixture([reply])
