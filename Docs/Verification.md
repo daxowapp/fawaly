@@ -34,6 +34,12 @@ The recovery preview refuses self-updates. The release packager stops before bui
 - A separate live Claude code review identified recovery/cancellation/catalog defects. Regression tests reproduced three defects before fixes. Fixes re-read comparison state under ownership lock, preserve changed-file inventory after cancellation, distinguish deliberate stops, compare catalog timestamps as dates, and retain a verified bundled fallback. The complete suite passed afterward.
 - The original recovered source/assets were read only. Reconstruction work stays in this separate repository.
 
+## Build 15 delegation rules and restored credit — 2026-11-08
+
+The redesigned page distinguishes the primary coding agent, independent advisor and lead delegated worker. A per-task-kind lead picker promotes the chosen assigned worker to that queue's first position; other task queues and saved roles are preserved. Advisor mode cards explain each policy, limits are expandable, and save/discard controls remain visible while scrolling. The restored special-thanks card credits Ahmed Nagdy for the original idea and name and links to nagdy.me, matching the original 0.4.1 Settings page.
+
+**132 app-hosted tests passed** after the final changes; the universal release built and its installed signature verified. Native UI acceptance exercised lead selection, per-kind isolation, move controls, advisor selection, disabled limits when consultation is off, discard, and Arabic/English layouts at the normal 1060-point window. Smaller window dimensions were not established through native automation. No provider generation request was sent. The Usage page's task/review/consult counts and today's API attempts and reported tokens matched the local database. These are local counts/caps, not official subscription balances; official quota support is not claimed. Existing user configuration and installed skill/instruction files and all 70 recovered originals remained byte-identical.
+
 ## Native UI acceptance
 
 The final universal (arm64 and x86_64) release built successfully and was opened on the test Mac. English/light layout places navigation on the left; Arabic/system appearance mirrors it to the right. The original artwork, four home cards, delegation rules, model selection, comparisons page, searchable accepted reviews and expandable evidence were inspected.

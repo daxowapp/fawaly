@@ -355,6 +355,13 @@
 			"path" = "Sources/Team/DelegationPolicy.swift";
 			"sourceTree" = "SOURCE_ROOT";
 		};
+		"A9F200998AA763CC87C7267E" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"name" = "DelegationRulesPage.swift";
+			"path" = "Sources/Team/DelegationRulesPage.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
 		"B2A3C73A2D6102B978D1D39D" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -749,6 +756,7 @@
 				"31FACDB859D96346B3C97873",
 				"5FA5C6C16806FEBEDA46F99A",
 				"997F6E5A71F59482ED42445E",
+				"A9F200998AA763CC87C7267E",
 				"B2A3C73A2D6102B978D1D39D",
 				"EAB939F1D231E8DCF13D4377",
 				"205325444F6CC085B6D1619E",
@@ -893,7 +901,7 @@
 				"ENABLE_DEBUG_DYLIB" = "NO";
 				"PRODUCT_BUNDLE_IDENTIFIER" = "com.daxow.fawaly.rebuilt";
 				"MARKETING_VERSION" = "0.7.0";
-				"CURRENT_PROJECT_VERSION" = "14";
+				"CURRENT_PROJECT_VERSION" = "15";
 				"INFOPLIST_KEY_CFBundleDisplayName" = "Fawaly";
 				"ENABLE_HARDENED_RUNTIME" = "YES";
 				"GENERATE_INFOPLIST_FILE" = "NO";
@@ -919,7 +927,7 @@
 				"ENABLE_DEBUG_DYLIB" = "NO";
 				"PRODUCT_BUNDLE_IDENTIFIER" = "com.daxow.fawaly.rebuilt";
 				"MARKETING_VERSION" = "0.7.0";
-				"CURRENT_PROJECT_VERSION" = "14";
+				"CURRENT_PROJECT_VERSION" = "15";
 				"INFOPLIST_KEY_CFBundleDisplayName" = "Fawaly";
 				"ENABLE_HARDENED_RUNTIME" = "YES";
 				"GENERATE_INFOPLIST_FILE" = "NO";
@@ -1210,6 +1218,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "997F6E5A71F59482ED42445E";
 		};
+		"3564F6E31719F5DF277FA4BD" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "A9F200998AA763CC87C7267E";
+		};
 		"55F1EF69D32A32C2EB4D67A8" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "B2A3C73A2D6102B978D1D39D";
@@ -1300,6 +1312,7 @@
 				"5B7DDD31E7F1CB592C2F5137",
 				"388946C93C1BC4623AE19C6C",
 				"3BE6DBEDF77B387E68CF1EF7",
+				"3564F6E31719F5DF277FA4BD",
 				"55F1EF69D32A32C2EB4D67A8",
 				"D1EFBF53E519054AB9C91356",
 				"2FA5EF405E3B48237747BBD5",

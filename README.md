@@ -126,4 +126,4 @@ Private modifications do not automatically require a public repository, and the 
 
 Useful bug reports, accessible Arabic copy, onboarding feedback, security reviews, tests, and small focused fixes all help. Read [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md). Please remove credentials and private project content from reports.
 
-Original idea and name: **Ahmed Nagdy**. Development and reconstruction: **Daxow and contributors**. This is an independent project, not an official OpenAI, Anthropic, or Moonshot product. Provider names and trademarks belong to their owners. [Third-party notices](THIRD_PARTY_NOTICES.md).
+Original idea and name: **[Ahmed Nagdy — أحمد نجدي](https://nagdy.me/)**. We developed and expanded his idea into a native Mac app; our thanks for the original idea and name. Development and reconstruction: **Daxow and contributors**. This is an independent project, not an official OpenAI, Anthropic, or Moonshot product. Provider names and trademarks belong to their owners. [Third-party notices](THIRD_PARTY_NOTICES.md).

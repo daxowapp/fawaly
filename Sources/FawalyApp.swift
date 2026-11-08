@@ -107,6 +107,8 @@ struct WorkshopWindow: View {
                 Group {
                     if page == .advisor {
                         AdvisorPage()
+                    } else if page == .rules {
+                        DelegationRulesPage(header: header(.rules))
                     } else {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 20) {
@@ -117,7 +119,7 @@ struct WorkshopWindow: View {
                                     Button(model.text("اكتب مهمة محلية", "Compose a local task")) { page = .shift }
                                     TasksLedger()
                                 case .connection: PrimaryConnectionPage()
-                                case .rules: DelegationRulesPage()
+                                case .rules: EmptyView()
                                 case .hires: WorkerModelsPage()
                                 case .contest: ComparisonPage()
                                 case .contractors: services
@@ -171,7 +173,7 @@ struct WorkshopWindow: View {
         case .worklog: subtitle = model.text("نتائج المهام المحفوظة في الورشة دي.", "Task results saved in this workshop.")
         case .contractors: subtitle = model.text("حساباتك والمساعدون المرتبطون. أضف خدمة وعيّن دورها في الفريق.", "Your connected accounts and assistants. Add a service and assign its team role.")
         case .connection: subtitle = model.text("اربط الأساسي بفريقك وافتح محادثتك المعتادة.", "Connect your primary to the team and open your usual chat.")
-        case .rules: subtitle = model.text("ترتيب العمال ومهل التنفيذ وسياسة المستشار.", "Worker order, execution timeouts and advisor policy.")
+        case .rules: subtitle = model.text("خلّي فريقك يعرف إمتى يستشير ومين يبدأ كل نوع شغل.", "Decide when to consult and who takes each type of task.")
         case .hires: subtitle = model.text("افحص بيانات الموديلات الرسمية المحفوظة محليًا.", "Inspect locally cached official model data.")
         case .skills: subtitle = model.text("سكيلز وذاكرة مشروع وقوالب تعليمات، مع الكريدت وفحص التداخل قبل التثبيت.", "Project skills, memory and instruction templates, with credit and overlap checks before installation.")
         case .contest: subtitle = model.text("نفس المهمة في نسختين منفصلتين، والمراجعة قبل اختيار النتيجة.", "The same task in separate snapshots, reviewed before choosing a result.")

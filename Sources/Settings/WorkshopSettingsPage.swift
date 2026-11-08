@@ -108,7 +108,17 @@ struct WorkshopSettingsPage: View {
                     Link(model.text("الكود المصدر — AGPL-3.0-or-later", "Source code — AGPL-3.0-or-later"), destination: URL(string: "https://github.com/daxowapp/fawaly")!)
                     Button(model.text("اقرأ تراخيص البرامج", "Read software licenses")) { showLicenses = true }
                     Link(model.text("سياسة الخصوصية الأصلية", "Original privacy policy"), destination: URL(string: "https://daxow.com/fawaly/privacy")!)
-                    Text(model.text("الفكرة والاسم: أحمد نجدي — Ahmed Nagdy. تطوير الفواعلي: Daxow.", "Original idea and name: Ahmed Nagdy. Fawaly development: Daxow.")).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            WorkshopCard {
+                VStack(alignment: .leading, spacing: 10) {
+                    Label(model.text("الفكرة والاسم — شكر خاص", "Original idea & name — special thanks"), systemImage: "heart.text.square")
+                        .font(.headline)
+                    Text(model.text("أحمد نجدي — Ahmed Nagdy", "Ahmed Nagdy — أحمد نجدي")).font(.title3.weight(.semibold))
+                    Text(model.text("أحمد نجدي هو صاحب الفكرة الأساسية للمشروع واسم «الفواعلي». أخذنا الفكرة وطوّرناها وأضفنا عليها لتصبح تطبيقًا أصليًا للماك. كل الشكر والتقدير له على الفكرة والاسم.", "Ahmed Nagdy created the original idea and the Fawaly name. We developed and expanded the idea into a native Mac app. Our thanks and appreciation for the idea and name."))
+                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Link(model.text("موقع أحمد نجدي", "Ahmed Nagdy’s website"), destination: URL(string: "https://nagdy.me/")!)
+                    Text(model.text("التطوير وإعادة البناء: Daxow والمساهمون.", "Development and reconstruction: Daxow and contributors.")).font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
