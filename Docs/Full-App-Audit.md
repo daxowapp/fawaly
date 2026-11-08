@@ -1,4 +1,4 @@
-> Follow-up: build26 adds a production security audit, verified worker-output isolation repairs and Claude UI/UX collaboration. See [Production-Readiness](Production-Readiness.md) for the current release decision; earlier live account checks below remain dated evidence.
+> Current follow-up: build29 adds 157 local tests, native ARM/Intel CI, output-truncation guards, keyboard focus scrolling and a successful bounded MiniMax review with Claude acceptance. See [Production-Readiness](Production-Readiness.md) for the current release decision; earlier live account checks below remain dated evidence.
 
 # Whole-app acceptance — 2026-11-08
 
@@ -31,7 +31,7 @@ The initial repair suite passed **134 app-hosted tests**. The final build adds D
 
 ## Installed build 22 follow-up
 
-The final app is **Sudo Interns / الفواعلي 0.7.0 (22)**, at one stable application location. Its preceding build 21 completed the live provider checks below; build 22 adds localized integration metadata. Old launchable task copies and the obsolete 0.4.1 app were moved to recoverable Trash. English is the default for new workshops; saved language choices remain intact. The rebuilt UI retains Arabic identity, original-name credit and separate natural humor in both languages. The final suite passed **142 tests**.
+At that earlier acceptance, the app was **Sudo Interns / الفواعلي 0.7.0 (22)**, at one stable application location. Its preceding build 21 completed the live provider checks below; build 22 adds localized integration metadata. Old launchable task copies and the obsolete 0.4.1 app were moved to recoverable Trash. English is the default for new workshops; saved language choices remain intact. The rebuilt UI retains Arabic identity, original-name credit and separate natural humor in both languages. The final suite passed **142 tests**.
 
 - Universal arm64/x86_64 Release built and passed deep/strict signature verification. The local installed app uses the owner's existing Apple Development certificate with hardened runtime, retaining a stable designated requirement across local revisions. No new certificate was created, no private key was exported and no Keychain ACL was weakened. This is not Developer ID/notarization.
 - Native GUI connection tests succeeded for MiniMax, DeepSeek and Z.AI. The actual Claude primary consulted Codex and delegated one exact-output check per worker. On the final build, DeepSeek and Kimi completed first; MiniMax and Z.AI initially failed saved-key access without sending requests. After their explicit GUI Save & test checks, one bounded recheck each completed and Claude recorded accepted reviews. The host independently read all four saved results and review records and confirmed the exact replies. These are text/protocol checks, not proof of general model reliability or arithmetic reasoning.

@@ -1,10 +1,10 @@
-> Latest production audit: build26, 156 passing tests, distinct per-screen scenes and Claude UI/UX collaboration. [Production readiness and remaining release gates](Production-Readiness.md). Public notarized distribution remains blocked.
+> Latest production audit: build29, 157 passing local tests, readable controls, keyboard focus scrolling, bounded MiniMax acceptance and actual Claude collaboration. [Production readiness and remaining release gates](Production-Readiness.md). Public notarized distribution remains blocked.
 
 # Verification and current limits
 
-## Build 22 — Sudo Interns / الفواعلي — 2026-11-08
+## Builds 22–29 — Sudo Interns / الفواعلي — 2026-11-09
 
-**156 app-hosted tests passed** in the final suite. This includes an MCP initialization regression across both supported legacy/current protocol versions and saved Arabic/English choices: the integration advertises **الفواعلي (Fawaly)** or **Sudo Interns (Fawaly)** while preserving tool identifiers and team configuration. Display metadata is sent when a client connects; an already-open client may retain its earlier name until reconnecting.
+**157 app-hosted tests passed** in the current suite. This includes an MCP initialization regression across both supported legacy/current protocol versions and saved Arabic/English choices: the integration advertises **الفواعلي (Fawaly)** or **Sudo Interns (Fawaly)** while preserving tool identifiers and team configuration. Display metadata is sent when a client connects; an already-open client may retain its earlier name until reconnecting.
 
 The app now starts new workshops in English, keeps existing language choices, uses **Sudo Interns** in English and **الفواعلي** in Arabic, and shares a bilingual workshop voice. Functional labels, permission scope and billing facts remain explicit. Developer Daily adds official publisher feeds, attributed dates/links, source/topic filters, a durable local reading list and a copied review/trial brief without automatic AI usage. New tests cover hostile RSS/Atom, CDATA, date filtering, deduplication, partial failures, local cache isolation and bookmark retention.
 
@@ -82,3 +82,11 @@ Native vendor authorization and the small real model requests were explicitly ap
 - A model can ignore instructions. Fawaly records primary review evidence but does not independently prove that a model inspected every change.
 
 Local tests do not imply independent security certification. See SECURITY.md and Docs/Architecture.md.
+
+## Build 29 installed follow-up
+
+The installed universal executable matches the verified Release artifact and passes strict code-signature verification. All twelve navigation entries opened in build 28; build 29 additionally passed Tab navigation across the complete sidebar, visible focus scrolling and Space activation. English/light and Arabic/dark rendering were checked; the original appearance, language and system keyboard-navigation preferences were restored. Article and skill controls include item-specific accessibility names. These checks do not substitute for a comprehensive VoiceOver audit or minimum-window acceptance.
+
+The host reproduced and fixed truncated provider output being accepted or executed as tool calls. Fixtures cover OpenAI text/tool replies and Anthropic text/tool replies. A real MiniMax request succeeded with the unchanged output cap and balanced effort; Claude independently read the implementation and saved its acceptance. Recovered originals (70 files) and existing installed instructions/skills (232 files) retain their baseline digests.
+
+Final build 29 source passed [native ARM/Intel CI and history scanning](https://github.com/daxowapp/fawaly/actions/runs/42527692384): Xcode 26.6, 157 tests on each architecture. Installed code matches the verified universal Release. Public distribution remains blocked by Developer ID/notarization, with clean-install, real upgrade, minimum-window, comprehensive VoiceOver, reboot and two-device acceptance still outstanding.

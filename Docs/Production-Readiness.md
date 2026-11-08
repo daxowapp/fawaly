@@ -21,7 +21,7 @@ Owned synthetic fixtures reproduced three failures before the final fix: a fast 
 
 ## Automated result
 
-**156 app-hosted tests passed** after the complete output-isolation repair. Coverage includes real confined fixture processes, timeout/stop behavior, project boundaries and stale writes, account denial before billing, callback injection, pinned skill installation, update leases, feed parsing and preferences conflicts. A universal Release is built for Apple Silicon and Intel; this does not substitute for testing on physical Intel hardware.
+**157 app-hosted tests passed** in the current suite, including the output-isolation and truncated-response regressions. Coverage includes real confined fixture processes, timeout/stop behavior, project boundaries and stale writes, account denial before billing, callback injection, pinned skill installation, update leases, feed parsing and preferences conflicts. A universal Release is built for Apple Silicon and Intel; this does not substitute for testing on physical Intel hardware.
 
 ## Independent follow-up
 
@@ -48,13 +48,13 @@ A live provider rejection exposed a stale-readiness case: Claude's saved login s
 
 All navigation sections opened on the installed preview. English/light and selected Arabic/dark screens were inspected; the scene set was checked visually and by distinct bundled-image digests. Saved settings were restored after appearance/language checks. Local saved-login checks reported three profiles available; they do not validate a remote token.
 
-Build 26 is installed at the single application location and its executable hash matches the verified universal Release. Claude's revoked session was renewed through official browser sign-in using the owner's selected account. A fresh real comparison then succeeded for both Claude and Kimi: exactly `CREW-OK` plus one newline (8 bytes), identical SHA256, only the expected new file, unchanged baseline files and a clean original Git status. The host independently inspected both snapshots and saved the review decision in the app; no merge occurred. The earlier401failure remains visible in history, with no automatic paid fallback.
+During the earlier build 26 acceptance, the installed executable matched the verified universal Release. Claude's revoked session was renewed through official browser sign-in using the owner's selected account. A fresh real comparison then succeeded for both Claude and Kimi: exactly `CREW-OK` plus one newline (8 bytes), identical SHA256, only the expected new file, unchanged baseline files and a clean original Git status. The host independently inspected both snapshots and saved the review decision in the app; no merge occurred. The earlier401failure remains visible in history, with no automatic paid fallback.
 
 The actual Claude Code primary also connected to the installed MCP server, read the saved roster, consulted Codex in one completed round and saved an adopted decision. Both agreed on controlled local-preview acceptance while public distribution remains blocked. That consultation used the host's verification summary; neither model claimed to have reproduced the host's tests independently.
 
 ## Unperformed external acceptance
 
-A physical Intel Mac, an additional clean macOS account/Mac, actual login/reboot behavior, two physical Macs syncing concurrently, a real OpenRouter account grant and billed request, unconfigured custom/local services, minimum-size window behavior, comprehensive keyboard/VoiceOver navigation and a real notarized version-to-version upgrade remain unverified. No claim of 100% coverage is made.
+A physical Intel Mac, an additional clean macOS account/Mac, actual login/reboot behavior, two physical Macs syncing concurrently, a real OpenRouter account grant and generation request, unconfigured custom/local services, minimum-size window behavior, comprehensive keyboard/VoiceOver navigation and a real notarized version-to-version upgrade remain unverified. No claim of 100% coverage is made.
 
 Sources: [Sparkle latest release](https://github.com/sparkle-project/Sparkle/releases/tag/2.10.1), [published security advisories](https://github.com/sparkle-project/Sparkle/security/advisories), [Apple Developer ID distribution](https://help.apple.com/xcode/mac/current/en.lproj/dev033e997ca.html).
 
@@ -76,7 +76,7 @@ MiniMax M3.1 Flash now uses medium thinking effort with the existing 4,096-token
 
 The installed interface also reproduced a mascot disappearing after appearance/activation changes: a paused animation timeline could retain an old transparent entrance frame. Resting scenes now render from the current time outside the paused timeline. This changes decorative rendering only.
 
-Build 27's full 156-test suite passed on native hosted ARM64 and x86_64 macOS 26 runners, with explicit host-architecture assertions, as did the public-history secret scan: [CI run](https://github.com/daxowapp/fawaly/actions/runs/42526939283). The final build 28 matrix is tracked separately below when completed.
+Build 27's full 156-test suite passed on native hosted ARM64 and x86_64 macOS 26 runners, with explicit host-architecture assertions, as did the public-history secret scan: [CI run](https://github.com/daxowapp/fawaly/actions/runs/42526939283). Later build acceptance is recorded below.
 
 ## Installed acceptance follow-up — build 29
 
@@ -85,3 +85,11 @@ All twelve navigation entries opened successfully in build 28, and the thirteent
 With macOS Keyboard navigation temporarily enabled, Tab reached the header and sidebar and Space opened Home. This exposed a real scrolling defect: focus could move to a sidebar button outside the visible scroll area. Build 29 tracks sidebar focus and scrolls the focused destination into view. The original keyboard-navigation preference is restored after acceptance. The truncation regression also now includes an Anthropic truncated tool-use response; all 157 local tests pass.
 
 A new real MiniMax text-only review succeeded with medium effort on build 28. The actual Claude primary independently checked the cited worker code and recorded an accepted review; the installed Home screen displayed it. This is evidence for that bounded request, not a claim that every prompt/model will complete. Missing or unknown provider finish reasons remain a compatibility limitation. No automatic retry, fallback or increased output budget was used.
+
+Build 29 is now installed at `/Applications/Sudo Interns.app`; its SHA256 matches the verified universal Release. Strict signature validation succeeds. Gatekeeper rejects the development-signed preview and no notarization ticket is present. Packaging preflight correctly refuses to create or upload a public release. Apple requires the Account Holder to create the missing Developer ID identity; no certificate archive was present in the task project or Downloads. [Apple certificate roles](https://developer.apple.com/help/account/certificates/create-developer-id-certificates).
+
+The installed build 29 keyboard fix was verified: focus on Home moved the sidebar scrollbar from bottom to top, the focused button was visibly outlined, all eleven following sidebar destinations were reachable by Tab, and Space opened the focused section. The temporary macOS Keyboard navigation setting was restored to off, its original value. The earlier broad keyboard/VoiceOver entry above remains a limit on comprehensive coverage, rather than a failure of this verified sidebar flow.
+
+Final code acceptance: [build 29 CI](https://github.com/daxowapp/fawaly/actions/runs/42527692384) completed successfully on both native `arm64` and `x86_64` hosted macOS 26 runners (Xcode 26.6, 157 tests each), plus the public-history secret scan. The installed executable SHA256 is `f7589c136274505361b5e6facff2a5b14fa1fb61ca92e4136cffccf41872cb62`. The release artifact and installed app match; this development signature does not authorize public distribution.
+
+OpenRouter consent was not submitted. The expired authorization tab was closed; a fresh sign-in should start only after the owner's pending approval, preserving the proposed one-dollar total cap/no-reset scope. The existing public website still describes the older Fawaly edition and offers no download. Website/privacy wording and download availability must be reconciled with this rebuilt edition before a public launch.
