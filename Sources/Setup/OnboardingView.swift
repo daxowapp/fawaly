@@ -183,6 +183,7 @@ struct ConnectionList: View {
             ForEach(agents, id: \.self) { agent in
                 VStack(alignment: .leading, spacing: 8) {
                     ConnectionStatus(agent: agent, phase: setup.phases[agent] ?? .available)
+                    ServiceAccessLinks(agent: agent, arabic: model.arabic, region: setup.kimiRegion)
                     if case .failed(let issue) = setup.phases[agent] {
                         Text(model.text("الربط ما اكتملش. جرّب تاني، أو ارجع لتجهيز الخدمات.", "Connection was not completed. Try again, or return to service preparation."))
                             .font(.caption).foregroundStyle(.orange)

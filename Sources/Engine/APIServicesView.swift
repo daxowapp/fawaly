@@ -14,6 +14,7 @@ struct APIServicesView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             Text(agent.label).font(.callout.weight(.semibold))
+                            ServiceAccessLinks(agent: agent, arabic: model.arabic, endpoint: [.openAIAPI, .anthropicAPI].contains(agent) ? nil : APIAssistant.preset(agent).endpoint)
                         }
                         Spacer()
                         Button(model.text("إضافة…", "Add…")) { configure(agent) }.disabled(model.busy || model.setup.busy).accessibilityLabel(model.text("إضافة \(agent.label)", "Add \(agent.label)"))
@@ -43,6 +44,13 @@ struct APIServiceEditor: View {
     @State private var operation: Task<Void, Never>?
     @State private var saved: APIAssistant?
     @State private var availableModels: [String] = []
+    @State private var modelSearch = ""
+    @State private var authorizedKey = false
+    @State private var signInFeedback: String?
+    private var displayedModels: [String] {
+        let matches = availableModels.filter { modelSearch.isEmpty || $0.localizedCaseInsensitiveContains(modelSearch) }
+        return Array(Set(matches + (model.isEmpty ? [] : [model]))).sorted()
+    }
     private var localSettingsOnly: Bool {
         guard let saved else { return false }
         return key.isEmpty && URL(string: endpoint.trimmingCharacters(in: .whitespacesAndNewlines)) == saved.endpoint && model.trimmingCharacters(in: .whitespacesAndNewlines) == saved.model && format == saved.format
@@ -51,21 +59,24 @@ struct APIServiceEditor: View {
     private var keyPlaceholder: String {
         if hasSavedKey { return text("مفتاح جديد اختياري؛ المحفوظ يفضل في Keychain", "Optional replacement key; saved key stays in Keychain") }
         if agent == .minimax { return text("مفتاح اشتراك MiniMax أو خدمة API", "MiniMax subscription or API key") }
-        if [.zai, .deepseek].contains(agent) { return text("مفتاح خدمة API", "API key") }
+        if [.zai, .deepseek, .openrouter].contains(agent) { return text("مفتاح خدمة API", "API key") }
         return text("مفتاح الخدمة؛ اختياري للسيرفر المحلي", "Service key; optional for a local server")
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
+          ScrollView {
+           VStack(alignment: .leading, spacing: 14) {
             Text(agent.label).font(.title2.weight(.semibold))
             if agent == .zai {
                 Text(text("GLM Coding Plan له مفتاح من Personal Coding Plan ← Plan Overview، واستخدامه الرسمي محصور في أدوات مدعومة مثل Claude Code وZCode. الربط المباشر هنا لخدمة API برصيد مستقل؛ الفواعلي مش ضمن قائمة أدوات الاشتراك المدعومة حاليًا.", "GLM Coding Plan keys are under Personal Coding Plan → Plan Overview and are limited to supported tools such as Claude Code and ZCode. This direct connection is for a separately billed API account; Fawaly is not currently listed as a supported subscription tool.")).font(.caption).foregroundStyle(.secondary)
-                HStack {
-                    Link(text("صفحة مفاتيح GLM", "GLM keys"), destination: URL(string: "https://z.ai/manage-apikey/apikey-list")!)
-                    Link(text("دليل اشتراك GLM", "GLM subscription guide"), destination: URL(string: "https://docs.z.ai/devpack/tool/claude")!)
-                }.font(.caption)
             } else if agent == .minimax {
                 Text(text("لاستخدام اشتراك MiniMax، هات مفتاح M Plan / Coding Plan من صفحة الخطة. مفتاح الاشتراك منفصل عن مفتاح API العادي؛ الفواعلي ما بيحوّلش بينهم تلقائيًا.", "For your MiniMax subscription, use the M Plan / Coding Plan key from your plan page. It is separate from a pay-as-you-go API key; Fawaly never switches between them automatically.")).font(.caption).foregroundStyle(.secondary)
-                Link(text("افتح دليل ومفتاح اشتراك MiniMax", "MiniMax subscription key guide"), destination: URL(string: "https://platform.minimax.io/docs/m-plan/quickstart")!).font(.caption)
+            }
+            ServiceAccessLinks(agent: agent, arabic: arabic, endpoint: URL(string: endpoint))
+            if agent == .openrouter {
+                Button(text("تسجيل الدخول إلى OpenRouter…", "Sign in to OpenRouter…")) { signInToOpenRouter() }
+                Text(text("اربط من المتصفح أو أدخل مفتاحك. الطلبات تُحسب من رصيد OpenRouter، وليس اشتراكات المواقع الأخرى. القائمة تعرض موديلات نصية تدعم أدوات الفواعلي، ومفيش اختيار تلقائي لموديل بديل.", "Connect in your browser or enter a key. Requests use your OpenRouter credits, not other website subscriptions. The list shows text models supporting Fawaly's tools. No alternative model is selected automatically.")).font(.caption).foregroundStyle(.secondary)
+                if let signInFeedback { Text(signInFeedback).font(.caption) }
             }
             TextField(text("رابط الطلب الكامل", "Full request endpoint"), text: $endpoint).textFieldStyle(.roundedBorder).environment(\.layoutDirection, .leftToRight)
             if [.openAIAPI, .anthropicAPI].contains(agent) {
@@ -76,10 +87,12 @@ struct APIServiceEditor: View {
             }
             TextField(text("معرّف الموديل", "Model ID"), text: $model).textFieldStyle(.roundedBorder).environment(\.layoutDirection, .leftToRight)
             if !availableModels.isEmpty {
+                TextField(text("ابحث باسم الموديل أو الشركة", "Search model or provider"), text: $modelSearch).textFieldStyle(.roundedBorder)
                 Picker(text("الموديلات المتاحة", "Available models"), selection: $model) {
                     Text(text("اختار موديل…", "Choose a model…")).tag("")
-                    ForEach(Array(Set(availableModels + (model.isEmpty ? [] : [model]))).sorted(), id: \.self) { Text($0).tag($0) }
+                    ForEach(displayedModels, id: \.self) { Text($0).tag($0) }
                 }
+                Text(text("\(displayedModels.count) موديل في القائمة", "\(displayedModels.count) models listed")).font(.caption).foregroundStyle(.secondary)
             }
             SecureField(keyPlaceholder, text: $key).textFieldStyle(.roundedBorder)
             if format == .openAI {
@@ -97,6 +110,8 @@ struct APIServiceEditor: View {
             Toggle(text("فعّل المساعد", "Enable assistant"), isOn: $enabled)
             Text(text("الحفظ والاختبار هيبعتوا طلبًا نصيًا قصيرًا للرابط ده ويُحسبوا من حسابك. عند تعيين المساعد لشغل مشروع، السياق والملفات المصرّح بها تتبعت للخدمة. حد الطلبات محلي، مش حد مصاريف بالدولار. السيرفر المحلي ممكن يستخدم موديلات سحابية حسب إعداداته.", "Save & test sends a short text request to this endpoint using your account. Assigned project work sends authorized context and files to the service. The request cap is local, not a dollar spending limit. A local server may use cloud models depending on its configuration.")).font(.caption).foregroundStyle(.secondary)
             if let issue { Text(issue).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
+           }
+          }
             HStack {
                 Button(text("إلغاء", "Cancel")) { operation?.cancel(); dismiss() }.keyboardShortcut(.cancelAction)
                 if hasSavedKey || (try? APIAssistantStore(root: root).load(agent)) != nil {
@@ -105,11 +120,12 @@ struct APIServiceEditor: View {
                 Spacer()
                 if working { ProgressView().controlSize(.small) }
                 Button(text("حفظ واختبار", "Save & test")) { saveAndTest() }.disabled(working || model.isEmpty)
+                if authorizedKey { Button(text("احفظ الربط", "Save connection")) { saveAuthorizedConnection() }.buttonStyle(WorkshopPrimaryButtonStyle()).disabled(working || model.isEmpty) }
                 if localSettingsOnly { Button(text("احفظ الإعدادات", "Save settings")) { saveLocalSettings() }.buttonStyle(WorkshopPrimaryButtonStyle()).disabled(working) }
             }
-        }.padding(24).frame(width: 610).disabled(working)
+        }.padding(24).frame(width: 650, height: min(720, max(400, (NSScreen.main?.visibleFrame.height ?? 820) - 100))).disabled(working)
         .overlay(alignment: .bottomLeading) {
-            if working { Button(text("أوقف الاختبار", "Stop test")) { operation?.cancel() }.padding(24) }
+            if working { Button(text("إلغاء العملية", "Cancel operation")) { operation?.cancel() }.padding(24) }
         }
         .onAppear {
             do {
@@ -118,6 +134,7 @@ struct APIServiceEditor: View {
                 endpoint = profile.endpoint.absoluteString; model = profile.model; format = profile.format
                 limitText = String(profile.dailyRequestLimit); roundsText = String(profile.maxRounds); enabled = profile.enabled
                 hasSavedKey = APIAssistantKeychain.contains(profile)
+                if agent == .openrouter { loadModels() }
             } catch { issue = error.localizedDescription }
         }
         .onDisappear { operation?.cancel() }
@@ -141,6 +158,30 @@ struct APIServiceEditor: View {
             digits += String(value)
         }
         return Int(digits)
+    }
+    private func signInToOpenRouter() {
+        working = true; issue = nil; signInFeedback = nil
+        operation = Task {
+            defer { working = false; operation = nil }
+            do {
+                key = try await OpenRouterSignIn().signIn()
+                authorizedKey = true
+                signInFeedback = text("تم التفويض. اختار الموديل واضغط احفظ الربط؛ الحفظ وحده لا يرسل مهمة مدفوعة. تقدر تدير المفتاح من رابط حساب OpenRouter.", "Authorized. Choose a model and Save connection; saving alone sends no paid model task. Manage the key using the OpenRouter account link.")
+                NSApp.activate(ignoringOtherApps: true)
+            } catch is CancellationError { issue = text("اتلغى تسجيل الدخول. الربط المحفوظ ما اتغيّرش.", "Sign-in cancelled. Saved connections were not changed.") }
+            catch { issue = error.localizedDescription }
+        }
+    }
+    private func saveAuthorizedConnection() {
+        guard authorizedKey, agent == .openrouter else { return }
+        do {
+            let value = try profile()
+            let lease = try WorkActivityLease(root: root)
+            defer { withExtendedLifetime(lease) {} }
+            try APIAssistantKeychain.save(key, for: value)
+            try APIAssistantStore(root: root).save(value)
+            key = ""; changed(true); dismiss()
+        } catch { issue = error.localizedDescription }
     }
     private func saveAndTest() {
         working = true; issue = nil

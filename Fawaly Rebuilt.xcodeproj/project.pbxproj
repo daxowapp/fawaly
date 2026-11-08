@@ -278,11 +278,25 @@
 			"path" = "Sources/Setup/OnboardingView.swift";
 			"sourceTree" = "SOURCE_ROOT";
 		};
+		"0B78388DB6026CBA93AD1315" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"name" = "OpenRouterSignIn.swift";
+			"path" = "Sources/Setup/OpenRouterSignIn.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
 		"3881AE624881E149F0A884DE" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
 			"name" = "RuntimeInstaller.swift";
 			"path" = "Sources/Setup/RuntimeInstaller.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"4F2876FEBA29C72028431DC6" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"name" = "ServiceAccessLinks.swift";
+			"path" = "Sources/Setup/ServiceAccessLinks.swift";
 			"sourceTree" = "SOURCE_ROOT";
 		};
 		"CAB8C585E6A11BA33BD156E7" = {
@@ -444,6 +458,13 @@
 			"lastKnownFileType" = "sourcecode.swift";
 			"name" = "OnboardingTests.swift";
 			"path" = "Tests/OnboardingTests.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"85728393FD41D92546D9B542" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"name" = "OpenRouterTests.swift";
+			"path" = "Tests/OpenRouterTests.swift";
 			"sourceTree" = "SOURCE_ROOT";
 		};
 		"EC77B63DE2B21F9CF4EB1702" = {
@@ -682,7 +703,9 @@
 				"AF3221F96DBD001AC4C536C3",
 				"F5E24E08892EF8D57A910EAD",
 				"6979940B10BBE57E7E3DDE41",
+				"0B78388DB6026CBA93AD1315",
 				"3881AE624881E149F0A884DE",
+				"4F2876FEBA29C72028431DC6",
 				"CAB8C585E6A11BA33BD156E7",
 				"1445D4EB3DE3D9881D62DD6E",
 				"1C3F3E1E59F77789AA5780E6",
@@ -733,6 +756,7 @@
 				"E79C190A2D072AEB271A0B8C",
 				"43E0FF8D010DA8C694C69DE3",
 				"3BA42B2E14D1B20241C3E597",
+				"85728393FD41D92546D9B542",
 				"EC77B63DE2B21F9CF4EB1702",
 				"91DD20D42C09FAB7947E81DB",
 				"A8660760C1E50B9FA80F8951",
@@ -829,7 +853,7 @@
 				"ENABLE_DEBUG_DYLIB" = "NO";
 				"PRODUCT_BUNDLE_IDENTIFIER" = "com.daxow.fawaly.rebuilt";
 				"MARKETING_VERSION" = "0.7.0";
-				"CURRENT_PROJECT_VERSION" = "11";
+				"CURRENT_PROJECT_VERSION" = "12";
 				"INFOPLIST_KEY_CFBundleDisplayName" = "Fawaly";
 				"ENABLE_HARDENED_RUNTIME" = "YES";
 				"GENERATE_INFOPLIST_FILE" = "NO";
@@ -855,7 +879,7 @@
 				"ENABLE_DEBUG_DYLIB" = "NO";
 				"PRODUCT_BUNDLE_IDENTIFIER" = "com.daxow.fawaly.rebuilt";
 				"MARKETING_VERSION" = "0.7.0";
-				"CURRENT_PROJECT_VERSION" = "11";
+				"CURRENT_PROJECT_VERSION" = "12";
 				"INFOPLIST_KEY_CFBundleDisplayName" = "Fawaly";
 				"ENABLE_HARDENED_RUNTIME" = "YES";
 				"GENERATE_INFOPLIST_FILE" = "NO";
@@ -1102,9 +1126,17 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "6979940B10BBE57E7E3DDE41";
 		};
+		"70E674C1269E911C5EF2C2CB" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "0B78388DB6026CBA93AD1315";
+		};
 		"45934101173A24AF32C7E257" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "3881AE624881E149F0A884DE";
+		};
+		"CA2B960CD13ABD5FA5CF324A" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "4F2876FEBA29C72028431DC6";
 		};
 		"BDC4A95D78D6AEA8BF236652" = {
 			"isa" = "PBXBuildFile";
@@ -1209,7 +1241,9 @@
 				"9AFA6AFF7A2C1ED40BE79B0E",
 				"FB0304D3707655F002E6DCCD",
 				"0E8FE29B18A6D9A18000C309",
+				"70E674C1269E911C5EF2C2CB",
 				"45934101173A24AF32C7E257",
+				"CA2B960CD13ABD5FA5CF324A",
 				"BDC4A95D78D6AEA8BF236652",
 				"A1C7C6D4F07FD30D88CB2D90",
 				"B860FAEAAD1DC90E304B57C9",
@@ -1332,6 +1366,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "3BA42B2E14D1B20241C3E597";
 		};
+		"414B2192A8408817F44B6233" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "85728393FD41D92546D9B542";
+		};
 		"CEF94B13909772A3448A7308" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "EC77B63DE2B21F9CF4EB1702";
@@ -1388,6 +1426,7 @@
 				"4223576A06F3C4C27C47B098",
 				"C7B7E987CC69BC580F3D9F44",
 				"6BA9FB588649B8B7C6AC6CBF",
+				"414B2192A8408817F44B6233",
 				"CEF94B13909772A3448A7308",
 				"977127A723C28A24985A41E6",
 				"A6A927976177780D795AC0D1",

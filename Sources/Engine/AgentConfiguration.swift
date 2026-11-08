@@ -6,7 +6,7 @@ import Security
 
 enum EngineAgent: String, CaseIterable, Codable, Sendable {
     case codex, claude, kimi
-    case zai, minimax, deepseek, anthropicAPI, openAIAPI, ollama, lmstudio
+    case zai, minimax, deepseek, openrouter, anthropicAPI, openAIAPI, ollama, lmstudio
 
     static let nativeAgents: [EngineAgent] = [.codex, .claude, .kimi]
     var isNative: Bool { Self.nativeAgents.contains(self) }
@@ -23,6 +23,7 @@ enum EngineAgent: String, CaseIterable, Codable, Sendable {
         case .zai: "Z.AI (GLM)"
         case .minimax: "MiniMax"
         case .deepseek: "DeepSeek"
+        case .openrouter: "OpenRouter"
         case .anthropicAPI: "Anthropic-compatible API"
         case .openAIAPI: "OpenAI-compatible API"
         case .ollama: "Ollama"

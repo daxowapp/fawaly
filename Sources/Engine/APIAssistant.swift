@@ -23,14 +23,18 @@ struct APIAssistant: Codable, Equatable, Sendable {
             throw FawalyError.invalid("Choose a valid HTTPS service endpoint, model and request limits. HTTP is allowed only on this Mac.")
         }
         if [.ollama, .lmstudio].contains(agent) && !local { throw FawalyError.invalid("Local assistants must use a loopback address on this Mac.") }
-        let fixedHosts: [EngineAgent: String] = [.zai: "api.z.ai", .minimax: "api.minimax.io", .deepseek: "api.deepseek.com"]
+        let fixedHosts: [EngineAgent: String] = [.zai: "api.z.ai", .minimax: "api.minimax.io", .deepseek: "api.deepseek.com", .openrouter: "openrouter.ai"]
         if let expected = fixedHosts[agent], host != expected { throw FawalyError.invalid("This provider must use its official API host. Choose a custom service for another host.") }
+        if agent == .openrouter && (format != .openAI || endpoint.absoluteString != "https://openrouter.ai/api/v1/chat/completions") {
+            throw FawalyError.invalid("OpenRouter must use its official chat endpoint.")
+        }
     }
     static func preset(_ agent: EngineAgent) -> Self {
         switch agent {
         case .zai: .init(agent: agent, endpoint: URL(string: "https://api.z.ai/api/paas/v4/chat/completions")!, model: "glm-5.3", format: .openAI)
         case .minimax: .init(agent: agent, endpoint: URL(string: "https://api.minimax.io/anthropic/v1/messages")!, model: "MiniMax-M3.1-Flash", format: .anthropic)
         case .deepseek: .init(agent: agent, endpoint: URL(string: "https://api.deepseek.com/chat/completions")!, model: "deepseek-flash", format: .openAI)
+        case .openrouter: .init(agent: agent, endpoint: URL(string: "https://openrouter.ai/api/v1/chat/completions")!, model: "", format: .openAI)
         case .ollama: .init(agent: agent, endpoint: URL(string: "http://localhost:11434/v1/chat/completions")!, model: "", format: .openAI)
         case .lmstudio: .init(agent: agent, endpoint: URL(string: "http://localhost:1234/v1/chat/completions")!, model: "", format: .openAI)
         case .anthropicAPI: .init(agent: agent, endpoint: URL(string: "https://api.anthropic.com/v1/messages")!, model: "", format: .anthropic)

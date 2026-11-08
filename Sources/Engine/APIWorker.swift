@@ -107,6 +107,7 @@ struct APIWorker: Sendable {
             var body: [String: Any] = ["model": assistant.model, "messages": messages, "max_tokens": 4096, "stream": false]
             if assistant.format == .anthropic { body["system"] = instruction }
             if files != nil { body["tools"] = tools }
+            if assistant.agent == .openrouter { body["provider"] = ["allow_fallbacks": false, "require_parameters": true] }
             var request = try Self.request(assistant, key: key, body: body, timeout: Double(timeout))
             guard (request.httpBody?.count ?? 0) <= 2 * 1024 * 1024 else { throw FawalyError.invalid("The worker conversation reached its size limit.") }
             request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -215,6 +216,12 @@ struct APIWorker: Sendable {
         if !key.isEmpty { request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization") }
         let (data, status) = try await transport(request)
         guard status == 200, data.count <= 2 * 1024 * 1024, let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw FawalyError.invalid("The provider model list is unavailable. Keep the configured model.") }
-        return Array(Set(((object["data"] as? [[String: Any]]) ?? []).compactMap { $0["id"] as? String }.filter(OfficialModels.valid))).sorted()
+        let entries = (object["data"] as? [[String: Any]]) ?? []
+        let compatible = entries.filter { entry in
+            guard assistant.agent == .openrouter else { return true }
+            let outputs = (entry["architecture"] as? [String: Any])?["output_modalities"] as? [String] ?? []
+            return (entry["supported_parameters"] as? [String] ?? []).contains("tools") && outputs.contains("text")
+        }
+        return Array(Set(compatible.compactMap { $0["id"] as? String }.filter(OfficialModels.valid))).sorted()
     }
 }

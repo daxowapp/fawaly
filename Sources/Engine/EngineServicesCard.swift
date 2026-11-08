@@ -50,6 +50,7 @@ private struct EngineConnections: View {
                                 .font(.caption).foregroundStyle(ready(profile) ? .green : .orange)
                         }
                         Text(profile.model).font(.caption).foregroundStyle(.secondary)
+                        ServiceAccessLinks(agent: profile.agent, arabic: model.arabic, endpoint: profile.endpoint)
                         HStack {
                             Button(model.text("إدارة الربط…", "Manage connection…")) { edit(profile.agent) }
                                 .accessibilityLabel(model.text("إدارة ربط \(profile.agent.label)", "Manage \(profile.agent.label) connection"))
