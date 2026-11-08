@@ -164,7 +164,7 @@ struct APIServiceEditor: View {
         operation = Task {
             defer { working = false; operation = nil }
             do {
-                key = try await OpenRouterSignIn().signIn()
+                key = try await OpenRouterSignIn().signIn(arabic: arabic)
                 authorizedKey = true
                 signInFeedback = text("تم التفويض. اختار الموديل واضغط احفظ الربط؛ الحفظ وحده لا يرسل مهمة مدفوعة. تقدر تدير المفتاح من رابط حساب OpenRouter.", "Authorized. Choose a model and Save connection; saving alone sends no paid model task. Manage the key using the OpenRouter account link.")
                 NSApp.activate(ignoringOtherApps: true)

@@ -152,7 +152,7 @@ struct WorkshopWindow: View {
             Text(model.text("فيه شغل لسه شغّال. المهام التابعة للواجهة هتتوقف وقد تترك تعديلات جزئية تحتاج مراجعة. مهام MCP في برنامج الأساسي منفصلة.", "Work is still active. App-owned work will stop and may leave partial edits to review. MCP jobs in your primary client run separately."))
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in LoginProcess.cancelAll(); WorkerProcess.cancelAll() }
-        .tint(Workshop.yellow)
+        .tint(Workshop.actionInk)
         .preferredColorScheme(model.state.preferences?.appearance == "light" ? .light : model.state.preferences?.appearance == "dark" ? .dark : nil)
         .environment(\.layoutDirection, model.arabic ? .rightToLeft : .leftToRight)
         .sheet(isPresented: $model.showOnboarding) { OnboardingView(setup: model.setup) }

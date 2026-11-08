@@ -1,4 +1,4 @@
-# Production readiness — 2026-11-08
+# Production readiness — 2026-11-09
 
 ## Release decision
 
@@ -57,3 +57,13 @@ The actual Claude Code primary also connected to the installed MCP server, read 
 A physical Intel Mac, an additional clean macOS account/Mac, actual login/reboot behavior, two physical Macs syncing concurrently, a real OpenRouter account grant and billed request, unconfigured custom/local services, minimum-size window behavior, comprehensive keyboard/VoiceOver navigation and a real notarized version-to-version upgrade remain unverified. No claim of 100% coverage is made.
 
 Sources: [Sparkle latest release](https://github.com/sparkle-project/Sparkle/releases/tag/2.10.1), [published security advisories](https://github.com/sparkle-project/Sparkle/security/advisories), [Apple Developer ID distribution](https://help.apple.com/xcode/mac/current/en.lproj/dev033e997ca.html).
+
+## Release-completion follow-up — build 27
+
+The host repeated the certificate creation in Xcode using the owner's existing authorization. Apple returned “This operation can only be performed by the Account Holder.” The signed-in team role is Admin; no Developer ID identity was created. Public packaging remains blocked without an Account Holder-provided Developer ID identity and notarization.
+
+A second real Claude source review consulted Codex through the installed MCP server and recorded its decision. Its single MiniMax delegation returned no usable final response and no job ID; no successful worker review was claimed. The host independently rejected two source-only suspicions: English branding is already transformed by `WorkshopCopy`, and publisher fetch failures are captured separately from cache-save errors. Verified remaining improvements are included in build 27: appearance-aware readable interactive ink, article/skill-specific accessibility labels, status announcements for news and skill feedback, and localized OpenRouter authorization branding. The full 156-test suite passed locally after these changes.
+
+CI now uses explicit standard macOS 26 ARM and Intel runners and checks their actual architecture before testing. A passing matrix validates native test execution on those hosted VMs, not a physical Intel desktop, the signed release artifact, or a clean Gatekeeper installation. [GitHub's runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) documents these labels.
+
+The unauthenticated OpenRouter model catalog returned 298 eligible models in the installed app. Its real account grant was prepared with an explicit one-dollar total cap and is awaiting the owner's action-time approval; no key or live request was created. Ollama and LM Studio are absent from this Mac and their standard loopback endpoints are not running. Their real model execution remains unverified; isolated adapter tests are not described as live model tests.

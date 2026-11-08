@@ -7,14 +7,25 @@ permissions:
   contents: read
 jobs:
   test:
-    runs-on: macos-latest
+    name: Tests (${{ matrix.architecture }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26
+            architecture: arm64
+          - runner: macos-26-intel
+            architecture: x86_64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Show toolchain
-        run: xcodebuild -version
+        run: |
+          test "$(uname -m)" = "${{ matrix.architecture }}"
+          xcodebuild -version
       - name: Build and test without provider accounts
         run: >-
           xcodebuild -project "Fawaly Rebuilt.xcodeproj"

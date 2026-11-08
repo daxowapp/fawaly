@@ -80,6 +80,7 @@ struct SkillsPage: View {
                         if item.hasScripts || item.hasHooks { Label(model.text("يتضمن سكربتات أو Hooks؛ راجعها قبل التثبيت", "Includes scripts or hooks; review before installing"), systemImage: "info.circle").font(.caption).foregroundStyle(Workshop.warning) }
                         HStack {
                             Button(model.text("المصدر والكريدت", "Source & credit")) { NSWorkspace.shared.open(item.sourceURL) }.buttonStyle(.link).tint(.blue)
+                                .accessibilityLabel(model.text("المصدر والكريدت: ", "Source & credit: ") + item.title(model.arabic))
                             Spacer()
                             Button([.installed, .modified, .external].contains(statuses[item.id] ?? .absent) ? model.text("اختيار نطاق التثبيت…", "Choose installation scope…") : statuses[item.id] == .incomplete ? model.text("راجع وأكمل التثبيت…", "Review and resume…") : model.text("راجع وثبّت…", "Review & install…")) { selecting = item }
                                 .buttonStyle(WorkshopPrimaryButtonStyle())
@@ -107,6 +108,7 @@ struct SkillsPage: View {
         }
         .onDisappear { activity.leavePage() }
         .onChange(of: activity.active) { _, _ in reload() }
+        .onChange(of: feedback) { _, message in WorkshopAccessibility.announce(message) }
         .onChange(of: scope) { _, _ in reload() }
         .sheet(item: $selecting, onDismiss: {
             if let choice = pendingChoice { pendingChoice = nil; prepare(choice) }

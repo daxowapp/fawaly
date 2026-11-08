@@ -151,6 +151,10 @@ struct DeveloperDailyPage: View {
             }
         }
         .task(id: refreshID) { await daily.update(root: model.dataDirectory, force: refreshID > 0) }
+        .onChange(of: daily.issue?.label(model.arabic)) { _, message in WorkshopAccessibility.announce(message) }
+        .onChange(of: copied) { _, id in
+            if id != nil { WorkshopAccessibility.announce(model.text("اتنسخ طلب المهمة للفريق.", "Team task request copied.")) }
+        }
     }
     @ViewBuilder private var refreshControls: some View {
         Label(model.text("فكرة مفيدة لوردية النهارده", "One useful idea for today's shift"), systemImage: "newspaper").font(.headline)
@@ -192,10 +196,13 @@ struct DeveloperDailyPage: View {
     }
     @ViewBuilder private func actions(_ article: DailyArticle) -> some View {
         Link(model.text("اقرأ المصدر", "Read original"), destination: article.url)
+            .accessibilityLabel(model.text("اقرأ المصدر: ", "Read original: ") + article.title)
         Button(model.text("جهّز مهمة لفريقي", "Prepare a team task")) {
             NSPasteboard.general.clearContents(); NSPasteboard.general.setString(article.taskPrompt(arabic: model.arabic), forType: .string); copied = article.id
-        }
+        }.accessibilityLabel(model.text("جهّز مهمة لفريقي: ", "Prepare a team task: ") + article.title)
         Button(daily.reading.saved.contains(article.id) ? model.text("إلغاء الحفظ", "Unsave") : model.text("احفظ لوقت لاحق", "Save for later")) { daily.toggle(article, saved: true, root: model.dataDirectory) }.disabled(!daily.readingAvailable)
+            .accessibilityLabel((daily.reading.saved.contains(article.id) ? model.text("إلغاء الحفظ: ", "Unsave: ") : model.text("احفظ لوقت لاحق: ", "Save for later: ")) + article.title)
         Button(daily.reading.read.contains(article.id) ? model.text("علّمه غير مقروء", "Mark unread") : model.text("علّمه مقروء", "Mark read")) { daily.toggle(article, saved: false, root: model.dataDirectory) }.disabled(!daily.readingAvailable)
+            .accessibilityLabel((daily.reading.read.contains(article.id) ? model.text("علّمه غير مقروء: ", "Mark unread: ") : model.text("علّمه مقروء: ", "Mark read: ")) + article.title)
     }
 }

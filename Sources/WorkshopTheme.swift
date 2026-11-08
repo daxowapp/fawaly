@@ -33,6 +33,12 @@ enum AppResources {
 enum Workshop {
     static let yellow = Color(red: 0.96, green: 0.71, blue: 0.19)
     static let card = Color(nsColor: .controlBackgroundColor)
+    // Yellow remains the brand accent; interactive text needs readable ink on light cards.
+    static let actionInk = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(red: 1, green: 0.76, blue: 0.36, alpha: 1)
+            : NSColor(red: 0.48, green: 0.26, blue: 0.02, alpha: 1)
+    })
     // Semantic warning ink remains readable on both light and dark cards.
     static let warning = Color(nsColor: NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
@@ -41,6 +47,14 @@ enum Workshop {
     })
     static func heading(_ size: CGFloat, ar: Bool) -> Font {
         ar ? .custom("Lalezar-Regular", size: size, relativeTo: .title) : .system(size: size, weight: .semibold, design: .rounded)
+    }
+}
+
+@MainActor
+enum WorkshopAccessibility {
+    static func announce(_ text: String?) {
+        guard let text, !text.isEmpty else { return }
+        AccessibilityNotification.Announcement(text).post()
     }
 }
 

@@ -24,11 +24,11 @@ struct OpenRouterPKCE: Sendable {
     private static func base64(_ data: Data) -> String {
         data.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
     }
-    func authorizationURL(callback: URL) -> URL {
+    func authorizationURL(callback: URL, arabic: Bool = false) -> URL {
         var url = URLComponents(string: "https://openrouter.ai/auth")!
         url.queryItems = [URLQueryItem(name: "callback_url", value: callback.absoluteString),
                           URLQueryItem(name: "code_challenge", value: challenge), URLQueryItem(name: "code_challenge_method", value: "S256"),
-                          URLQueryItem(name: "state", value: state), URLQueryItem(name: "key_label", value: "Fawaly on Mac")]
+                          URLQueryItem(name: "state", value: state), URLQueryItem(name: "key_label", value: WorkshopCopy.integrationName(arabic: arabic) + " on Mac")]
         return url.url!
     }
     func code(from target: String) throws -> String {
@@ -59,10 +59,12 @@ final class OpenRouterSignIn {
     private var continuation: CheckedContinuation<String, Error>?
     private var deadline: Task<Void, Never>?
     private var started = false
+    private var arabic = false
 
-    func signIn(timeout: TimeInterval = 180,
+    func signIn(arabic: Bool = false, timeout: TimeInterval = 180,
                 open: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) },
                 exchange: @escaping @Sendable (URLRequest) async throws -> (Data, Int) = { try await APIHTTP.send($0) }) async throws -> String {
+        self.arabic = arabic
         let pkce = try OpenRouterPKCE()
         defer { stop() }
         let code = try await withTaskCancellationHandler {
@@ -80,7 +82,7 @@ final class OpenRouterSignIn {
                         if case .ready = state, !self.started, let port = self.listener?.port {
                             self.started = true
                             let callback = URL(string: "http://localhost:\(port.rawValue)\(pkce.path)")!
-                            guard open(pkce.authorizationURL(callback: callback)) else {
+                            guard open(pkce.authorizationURL(callback: callback, arabic: arabic)) else {
                                 self.finish(.failure(FawalyError.invalid("Open your browser to connect OpenRouter."))); return
                             }
                         } else if case .failed = state {
@@ -126,7 +128,9 @@ final class OpenRouterSignIn {
             }
             let first = String(decoding: bytes, as: UTF8.self).components(separatedBy: "\r\n")[0].split(separator: " ")
             let code = first.count == 3 && first[0] == "GET" && first[2] == "HTTP/1.1" ? try? pkce.code(from: String(first[1])) : nil
-            let body = code == nil ? "Invalid callback. Return to Fawaly to try again." : "OpenRouter authorization received. Return to Fawaly to choose your model and save the connection."
+            let body = self.arabic
+                ? (code == nil ? "رابط الرجوع غير صالح. ارجع للفواعلي وجرّب تاني." : "وصل تفويض OpenRouter. ارجع للفواعلي واختار الموديل واحفظ الاتصال.")
+                : (code == nil ? "Invalid callback. Return to Sudo Interns (Fawaly) to try again." : "OpenRouter authorization received. Return to Sudo Interns (Fawaly) to choose your model and save the connection.")
             let header = "HTTP/1.1 \(code == nil ? "400 Bad Request" : "200 OK")\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nContent-Security-Policy: default-src 'none'\r\n\r\n"
             connection.send(content: Data((header + body).utf8), completion: .contentProcessed { [weak self] _ in
               Task { @MainActor in
