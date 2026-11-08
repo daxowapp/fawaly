@@ -37,6 +37,31 @@ private func apiProfile(format: APIAssistant.Format = .openAI) -> APIAssistant {
                  endpoint: URL(string: format == .openAI ? "https://fixture.invalid/v1/chat/completions" : "https://fixture.invalid/v1/messages")!, model: "fixture-model", format: format)
 }
 
+@Test func deniedCredentialEndsTheJobWithoutChargingOrFallingBack() async throws {
+    let root = try apiRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let profile = apiProfile(), fixture = APIFixture([])
+    var configured = APIWorker(root: root)
+    configured.credential = { _ in throw FawalyError.invalid("Fixture Keychain access denied") }
+    configured.transport = { try await fixture.send($0) }
+    let worker = configured
+    var state = WorkshopState()
+    state.team = TeamSettings(primary: .claude, advisor: .codex, workers: [profile.agent, .kimi])
+    try WorkshopStore(root: root).save(state)
+    let bridge = EngineBridge(configuration: .init(root: root), client: .claude, worker: { _, brief, workspace, timeout in
+        try await worker.run(profile, prompt: brief, workspace: workspace, timeout: timeout)
+    }, ready: { _ in true })
+    await #expect(throws: FawalyError.self) {
+        try await bridge.delegate(brief: "A denied key must not reach a provider", cwd: nil, provider: nil, timeout: 2)
+    }
+    #expect(await fixture.requests.isEmpty)
+    #expect(try APIUsage(root: root).totals(profile.agent).requests == 0)
+    let job = try #require(TeamJobLog(root: root).recent().first)
+    #expect(job.worker == profile.agent && job.status == "failed" && job.finished != nil)
+    #expect(job.reviews?.isEmpty != false)
+    #expect(try WorkshopStore(root: root).load().team == state.team)
+}
+
 @Test func apiWorkerWritesApprovedFileAndRequiresIndependentPrimaryReview() async throws {
     let root = try apiRoot(), project = root.appendingPathComponent("project")
     defer { try? FileManager.default.removeItem(at: root) }

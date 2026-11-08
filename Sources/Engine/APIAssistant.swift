@@ -1,6 +1,7 @@
 import Foundation
 import Security
 import CryptoKit
+import LocalAuthentication
 
 struct APIAssistant: Codable, Equatable, Sendable {
     enum Format: String, Codable, CaseIterable { case openAI, anthropic }
@@ -74,13 +75,19 @@ enum APIAssistantKeychain {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "com.daxow.fawaly.rebuilt.api", kSecAttrAccount as String: assistant.keyAccount]
     }
     static func contains(_ assistant: APIAssistant) -> Bool { SecItemCopyMatching(query(assistant) as CFDictionary, nil) == errSecSuccess }
-    static func read(_ assistant: APIAssistant) throws -> String {
+    static func read(_ assistant: APIAssistant, allowInteraction: Bool = false) throws -> String {
         var value = query(assistant); value[kSecReturnData as String] = true
+        // A headless MCP worker cannot surface a Keychain approval reliably.
+        // MCP also disables legacy file-keychain interaction at process entry;
+        // LAContext alone covers only the modern authentication path.
+        let context = LAContext()
+        context.interactionNotAllowed = !allowInteraction
+        value[kSecUseAuthenticationContext as String] = context
         var data: CFTypeRef?
         let result = SecItemCopyMatching(value as CFDictionary, &data)
         if result == errSecItemNotFound { return "" }
         guard result == errSecSuccess, let bytes = data as? Data, let key = String(data: bytes, encoding: .utf8) else {
-            throw FawalyError.invalid("Allow Fawaly to read this service key from Keychain, or enter it again.")
+            throw FawalyError.invalid("Keychain access is unavailable. In Fawaly, open Assistants & plans, manage this service, and choose Save & test to approve access or enter its key again. No provider request was sent.")
         }
         return key
     }

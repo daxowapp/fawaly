@@ -56,7 +56,17 @@ struct EngineBridge: Sendable {
             let status = available ? (try hasCapacity(agent) ? (configuration.isWorking(agent) ? "busy" : "available") : "local_limit_reached") : configured?.enabled == false ? "paused" : "authentication_required"
             return (agent.providerID, Status.Availability(provider: agent.providerID, status: status, workerModel: state.workerModels?[agent.rawValue] ?? configured?.model, billing: agent.billingLabel))
         })
-        return Status(providers: providers, advisor: state.advisors, team: state.team, delegation: state.delegationPolicy ?? DelegationPolicy(), projectDirectory: state.projectDirectory?.path,
+        var advisor = state.advisors
+        if let team = state.team {
+            // Manual preview seats are separate from the advisor a native
+            // primary actually calls. Project that effective assignment only.
+            advisor.seats = team.advisor.map { agent in
+                [AdvisorSeat(provider: agent.providerID,
+                             model: providers[agent.providerID]?.workerModel ?? agent.modelLabel,
+                             enabled: ready(agent))]
+            } ?? []
+        }
+        return Status(providers: providers, advisor: advisor, team: state.team, delegation: state.delegationPolicy ?? DelegationPolicy(), projectDirectory: state.projectDirectory?.path,
                       active: try TeamJobLog(root: configuration.root).recent().filter { $0.status == "running" }.map { $0.id.uuidString }, language: state.arabic ? "ar" : "en")
     }
 

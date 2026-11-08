@@ -309,11 +309,15 @@ struct TasksPage: View {
                         if !item.details.isEmpty { Text(item.details).font(.callout).foregroundStyle(.secondary) }
                         HStack {
                             Button(model.text("معاينة محلية", "Local preview")) { run(item, provider: AppModel.preview) }
-                            if model.state.provider != nil {
-                                Button(model.text("إرسال للخدمة…", "Send to service…")) { prepareSend(item, provider: AppModel.connected) }
-                            }
-                            ForEach(model.nativeAgents, id: \.self) { agent in
-                                Button(agent.label + "…") { prepareSend(item, provider: agent.providerID) }
+                            if model.state.provider != nil || !model.nativeAgents.isEmpty {
+                                Menu(model.text("إرسال لمساعد…", "Send to assistant…")) {
+                                    if model.state.provider != nil {
+                                        Button(model.text("الخدمة المتصلة…", "Connected service…")) { prepareSend(item, provider: AppModel.connected) }
+                                    }
+                                    ForEach(model.nativeAgents, id: \.self) { agent in
+                                        Button(agent.label) { prepareSend(item, provider: agent.providerID) }
+                                    }
+                                }.fixedSize()
                             }
                             Spacer()
                             Button(model.text("شيل من الطابور", "Remove from queue"), role: .destructive) {

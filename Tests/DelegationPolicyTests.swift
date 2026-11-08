@@ -2,6 +2,28 @@ import Foundation
 import Testing
 @testable import FawalyApp
 
+@Test func rosterAdvisorMatchesTeamWithoutChangingManualPreviewSeats() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("roster-advisor-" + UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    var state = WorkshopState()
+    state.team = TeamSettings(primary: .claude, advisor: .codex, workers: [.kimi])
+    state.workerModels = ["codex": "fixture-advisor"]
+    state.advisors.mode = .important
+    let manualSeats = state.advisors.seats
+    try WorkshopStore(root: root).save(state)
+    let bridge = EngineBridge(configuration: .init(root: root), client: .claude, ready: { _ in true })
+    let advisor = try bridge.status().advisor
+    #expect(advisor.seats == [AdvisorSeat(provider: "codex-official", model: "fixture-advisor")])
+    #expect(advisor.mode == .important)
+    #expect(try WorkshopStore(root: root).load().advisors.seats == manualSeats)
+    state.team?.advisor = nil
+    try WorkshopStore(root: root).save(state)
+    #expect(try bridge.status().advisor.seats.isEmpty)
+    state.team = nil
+    try WorkshopStore(root: root).save(state)
+    #expect(try bridge.status().advisor.seats == manualSeats)
+}
+
 @Test @MainActor func savedPolicyDrivesEngineWithoutChangingRolesOrOtherSettings() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("policy-" + UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }

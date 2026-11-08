@@ -1,6 +1,7 @@
 import CoreFoundation
 import Darwin
 import Foundation
+import Security
 
 enum EngineCLI {
     private static let outputLock = NSLock()
@@ -15,6 +16,15 @@ enum EngineCLI {
         do {
             switch arguments.first {
             case "mcp":
+                // SecItem's LAContext flag does not suppress prompts for legacy
+                // file-based Mac keychains. This headless process must fail
+                // closed; approvals belong in the account editor's GUI action.
+                var previousInteraction: DarwinBoolean = true
+                guard SecKeychainGetUserInteractionAllowed(&previousInteraction) == errSecSuccess,
+                      SecKeychainSetUserInteractionAllowed(false) == errSecSuccess else {
+                    throw FawalyError.invalid("Background Keychain access could not be prepared. Open Fawaly and retry from the account editor.")
+                }
+                defer { SecKeychainSetUserInteractionAllowed(previousInteraction.boolValue) }
                 let client: EngineAgent?
                 if arguments.count == 1 { client = nil }
                 else if arguments.count == 3, arguments[1] == "--client", let value = EngineAgent(rawValue: arguments[2]), EngineAgent.primaryAgents.contains(value) { client = value }

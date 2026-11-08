@@ -192,7 +192,7 @@ struct APIServiceEditor: View {
                 let lease = try WorkActivityLease(root: root)
                 defer { withExtendedLifetime(lease) {} }
                 let supplied = key
-                let credential = supplied.isEmpty ? try APIAssistantKeychain.read(profile) : supplied
+                let credential = supplied.isEmpty ? try APIAssistantKeychain.read(profile, allowInteraction: true) : supplied
                 guard !credential.contains(where: \.isNewline), credential.utf8.count <= 16384 else { throw FawalyError.invalid("Enter a valid service key.") }
                 var worker = APIWorker(root: root)
                 worker.credential = { _ in credential }
@@ -233,7 +233,7 @@ struct APIServiceEditor: View {
                 let assistant = try profile(modelOverride: "model-list")
                 let supplied = key
                 var worker = APIWorker(root: root)
-                worker.credential = { value in supplied.isEmpty ? try APIAssistantKeychain.read(value) : supplied }
+                worker.credential = { value in supplied.isEmpty ? try APIAssistantKeychain.read(value, allowInteraction: true) : supplied }
                 availableModels = try await worker.models(assistant)
                 if availableModels.isEmpty { issue = text("الخدمة لم تعرض موديلات. تقدر تكتب معرّف الموديل يدويًا.", "No models were listed. You can enter a model ID manually.") }
             } catch is CancellationError { issue = text("اتوقف الطلب.", "Request stopped.") }

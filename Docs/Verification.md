@@ -1,5 +1,9 @@
 # Verification and current limits
 
+## Build 16 whole-app audit — 2026-11-08
+
+**134 tests passed** after fixes for headless Keychain prompting, conflicting roster advisor seats, stale local usage and crowded task actions. A real Claude→Codex consultation→Kimi delegation→primary review completed; real Claude/Kimi comparison outputs were independently checked. See [the complete acceptance matrix, repairs and remaining checks](Full-App-Audit.md). Final installation/UI rechecks and saved API-key approvals remain pending the owner unlocking the Mac; these pending provider results are not claimed.
+
 ## 0.7.0 local acceptance — 2026-11-07
 
 The expanded app-hosted suite passed **113 tests** on this Mac, including the real macOS Keychain roundtrip with disposable fixture values, endpoint scoping, local caps, both API message formats, bounded file tools, case/format variants of Git metadata, coordinated stale-write rejection, preference revision/CAS behavior, update configuration and external-worker/comparison exclusion. Test items were removed from Keychain afterward. The local app is a universal arm64/x86_64 development preview in the user's Applications folder; production packaging enforces Developer ID and hardened runtime separately.
