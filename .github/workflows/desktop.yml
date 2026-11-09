@@ -179,6 +179,8 @@ jobs:
         shell: pwsh
         env:
           E2E_SCREENSHOTS: ${{ github.workspace }}/e2e-screenshots
+          # Recent WebView2 refuses remote debugging on its default data folder.
+          WEBVIEW2_USER_DATA_FOLDER: ${{ runner.temp }}\webview2-e2e
         run: |
           $driver = Start-Process tauri-driver -ArgumentList "--native-driver","$env:EDGE_DRIVER" -PassThru
           Start-Sleep 3
@@ -208,8 +210,9 @@ jobs:
           $msi = (Get-ChildItem packages -Recurse -Filter *.msi | Select-Object -First 1).FullName
           $process = Start-Process msiexec -ArgumentList "/i","`"$msi`"","/qn","/norestart" -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "msi install failed: $($process.ExitCode)" }
-          $app = Get-ChildItem "$env:ProgramFiles\Sudo Interns","${env:ProgramFiles(x86)}\Sudo Interns" -Filter sudo-interns.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          $app = Get-ChildItem "$env:ProgramFiles","${env:ProgramFiles(x86)}","$env:LOCALAPPDATA" -Recurse -Filter sudo-interns.exe -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $app) { throw "msi did not install the app" }
+          "MSI installed to $($app.FullName)"
           python Scripts/desktop_e2e.py smoke $app.FullName
           $process = Start-Process msiexec -ArgumentList "/x","`"$msi`"","/qn","/norestart" -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "msi removal failed: $($process.ExitCode)" }
@@ -268,13 +271,13 @@ jobs:
           grep -q 'mcp_servers.keep_me' ~/.codex/config.toml
           sudo apt-get remove -y sudo-interns
           test ! -e /usr/bin/sudo-interns
-      - name: Run the AppImage from an extracted copy
+      - name: Run the AppImage itself
         run: |
           image="$(find "$PWD/packages" -name '*.AppImage' | head -1)"
           chmod +x "$image"
           cd "$RUNNER_TEMP"
-          "$image" --appimage-extract >/dev/null
-          xvfb-run -a python3 "$GITHUB_WORKSPACE/Scripts/desktop_e2e.py" smoke "$RUNNER_TEMP/squashfs-root/usr/bin/sudo-interns"
+          "$image" --appimage-extract usr/bin/sudo-interns-engine >/dev/null
+          xvfb-run -a python3 "$GITHUB_WORKSPACE/Scripts/desktop_e2e.py" smoke "$image" "$RUNNER_TEMP/squashfs-root/usr/bin/sudo-interns-engine"
 
   install-rpm:
     name: Install (rpm, ${{ matrix.artifact }})

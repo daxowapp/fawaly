@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Exercises installed Windows and Linux packages on the system itself.
 
-  smoke APP            launch, relaunch, and check the bundled engine
+  smoke APP [ENGINE]   launch, relaunch, and check the bundled engine
   onboarding APP       drive the real UI with a fresh profile through tauri-driver,
                        then run a scripted primary over the MCP entry the UI registered
 
@@ -66,10 +66,10 @@ def launch_once(app, env, seconds):
     return alive, process.stderr.read().decode(errors="replace")[-2000:]
 
 
-def smoke(app):
+def smoke(app, engine_path=None):
     data = pathlib.Path(tempfile.mkdtemp(prefix="sudo-interns-smoke-"))
     env = {**os.environ, "SUDO_INTERNS_DATA_DIR": str(data)}
-    engine = engine_beside(app)
+    engine = pathlib.Path(engine_path) if engine_path else engine_beside(app)
     version = subprocess.run([str(engine), "version"], capture_output=True, text=True, env=env, timeout=30)
     assert version.returncode == 0 and version.stdout.strip(), version
     log(f"engine version {version.stdout.strip()}")
@@ -362,6 +362,6 @@ def onboarding(app):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3 or sys.argv[1] not in ("smoke", "onboarding"):
+    if len(sys.argv) < 3 or sys.argv[1] not in ("smoke", "onboarding"):
         raise SystemExit(__doc__)
-    {"smoke": smoke, "onboarding": onboarding}[sys.argv[1]](sys.argv[2])
+    {"smoke": smoke, "onboarding": onboarding}[sys.argv[1]](*sys.argv[2:])
