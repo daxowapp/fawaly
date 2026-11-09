@@ -9,7 +9,7 @@ permissions:
   contents: read
   actions: read
 env:
-  PACKAGES_RUN: "42598486970"
+  PACKAGES_RUN: "42626337009"
   TAURI_DRIVER_VERSION: "2.1.0"
 jobs:
   windows:

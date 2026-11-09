@@ -44,7 +44,7 @@ A busy assigned worker never rolls over to a paid one. The request stops and say
 
 ## What has been tested
 
-Results from CI run [42598486970](https://github.com/daxowapp/fawaly/actions/runs/42598486970), commit `6a160e4`, on GitHub-hosted runners. These are real installs on those virtual machines, not on physical devices.
+Results from CI run [42626337009](https://github.com/daxowapp/fawaly/actions/runs/42626337009), commit `c8bff8c`, on GitHub-hosted runners. These are real installs on those virtual machines, not on physical devices.
 
 | System | Arch | Packages built | Install, launch, relaunch, remove | Page rendered in English and Arabic | Full onboarding by UI automation | Official CLIs ran |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -61,10 +61,11 @@ Full onboarding means: a fresh profile, the real interface, downloading the offi
 Also verified in CI:
 
 - Linux: a hostile process under Landlock could not write outside the project through absolute paths, `..`, symlinks or child processes, could not read outside files or move files across the boundary, and could not read the home folder.
+- Linux: a child that detaches with `setsid` is ended when its worker exits and when the supervising helper is stopped.
 - Windows: file tools refuse junctions that lead outside the project.
 - The system secret store round-trips on Windows and Linux. On Linux, with no Secret Service, it fails closed.
 - Uninstalling the EXE on Windows Server 2022 removes the team registration and keeps the other MCP server.
-- The `disconnect` command on Ubuntu keeps the other MCP server. The check that it removes the team registration could not fail in the run above, so that removal is not shown by it. The check has since been corrected and has not run yet.
+- The `disconnect` command on Ubuntu removes the team registration and keeps the other MCP server.
 
 Not verified:
 
@@ -73,9 +74,12 @@ Not verified:
 - Real Codex, Claude Code or Kimi workers editing a project on these systems, including their behavior under Landlock, and Codex's own Windows sandbox.
 - Physical machines, desktop environments beyond the runners' X virtual display, antivirus products, and SmartScreen behavior.
 - Installing the MSI on a clean machine. In CI it ran after the EXE installer and reused that location.
+- Cancelling the EXE uninstall, and upgrading from one EXE to the next. The team connection should survive both, based on reading the installer template. Neither was run.
 - Real OpenRouter, Skills download and Developer Daily requests. Their logic has automated tests with simulated responses.
 
 One earlier CI run lost its connection to the UI test driver partway through onboarding on all three Linux jobs. It did not recur, and the cause was not established.
+
+In the run above, the Ubuntu 24.04 arm64 install job failed on its first attempt when the app could not download Codex, and passed when that job was re-run. The cause is not known, because the app reports every download failure with the same message.
 
 ## Build from source
 
