@@ -153,14 +153,20 @@ class WebDriver:
 
     def click(self, testid, timeout=30):
         deadline = time.time() + timeout
-        element = self.find(testid, timeout)
-        while not self.do("GET", f"/element/{element}/enabled"):
+        while True:
+            try:
+                element = self.find(testid, timeout)
+                if self.do("GET", f"/element/{element}/enabled"):
+                    self.do("POST", f"/element/{element}/click", {})
+                    return
+            except RuntimeError as error:
+                # The UI redraws often, which can replace an element between steps.
+                if "stale" not in str(error):
+                    raise
             if time.time() > deadline:
                 self.screenshot(f"disabled-{testid}")
                 raise RuntimeError(f"still disabled: {testid}\n{self.text()}")
             time.sleep(0.5)
-            element = self.find(testid, timeout)
-        self.do("POST", f"/element/{element}/click", {})
 
     def type_into(self, testid, value):
         element = self.find(testid)
@@ -222,14 +228,20 @@ class Primary:
         self.process.wait(30)
 
 
+def default_data_root():
+    if WINDOWS:
+        return pathlib.Path(os.environ["APPDATA"]) / "SudoInterns"
+    return pathlib.Path(os.environ.get("XDG_DATA_HOME", pathlib.Path.home() / ".local" / "share")) / "SudoInterns"
+
+
 def codex_home():
     return pathlib.Path.home() / ".codex"
 
 
 def onboarding(app):
     app = pathlib.Path(app).resolve()
-    data = pathlib.Path(tempfile.mkdtemp(prefix="sudo-interns-e2e-"))
-    os.environ["SUDO_INTERNS_DATA_DIR"] = str(data)
+    data = default_data_root()
+    assert not data.exists(), "onboarding must start from a fresh profile"
 
     # Another MCP server the user already had. It must survive setup.
     codex_home().mkdir(exist_ok=True)

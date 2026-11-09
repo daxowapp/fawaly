@@ -447,6 +447,7 @@ function connectionList(agents) {
 
 function teamReady() {
   const team = ui.draft;
+  if (!team) return false;
   const supporters = [team.advisor, ...team.workers].filter(Boolean);
   return supporters.every((agent) => service(agent).ready) && service(team.primary).installed;
 }
@@ -508,9 +509,9 @@ function onboarding() {
           }
           await invoke("finish_onboarding");
           await refresh();
-          ui.page = "home";
           ui.draft = null;
           ui.step = 0;
+          goto("home");
           toast(t("الفريق اتوصّل. افتح محادثة جديدة في أجنتك.", "Team connected. Start a new chat in your agent."));
         }),
       !team || !teamReady(),
@@ -992,6 +993,14 @@ function render() {
   root.replaceChildren(content, ...(ui.modal ? [skillModal()] : []));
   if (focusId) document.querySelector(`[data-testid="${focusId}"]`)?.focus();
 }
+
+// A rendering bug must never leave a silent blank window.
+function showFatal(detail) {
+  const root = document.getElementById("app");
+  if (!root.firstChild) root.textContent = `Sudo Interns could not open this screen: ${detail}`;
+}
+window.addEventListener("error", (event) => showFatal(event.message));
+window.addEventListener("unhandledrejection", (event) => showFatal(event.reason));
 
 async function start() {
   try {

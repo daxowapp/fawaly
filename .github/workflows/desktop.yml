@@ -165,13 +165,22 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal
           cargo install tauri-driver --version "$env:TAURI_DRIVER_VERSION" --locked
-          if (-not $env:EDGEWEBDRIVER) { throw "this runner has no Edge driver" }
+          # The driver must match WebView2, which can lag behind Edge on these images.
+          $id = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $keys = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$id", "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$id", "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$id"
+          $version = $keys | ForEach-Object { (Get-ItemProperty $_ -ErrorAction SilentlyContinue).pv } | Where-Object { $_ } | Select-Object -First 1
+          if (-not $version) { throw "WebView2 runtime version not found" }
+          "WebView2 runtime: $version"
+          $arch = if ($env:RUNNER_ARCH -eq 'ARM64') { 'arm64' } else { 'win64' }
+          Invoke-WebRequest "https://msedgedriver.microsoft.com/$version/edgedriver_$arch.zip" -OutFile "$env:RUNNER_TEMP\edgedriver.zip"
+          Expand-Archive "$env:RUNNER_TEMP\edgedriver.zip" "$env:RUNNER_TEMP\edgedriver"
+          "EDGE_DRIVER=$env:RUNNER_TEMP\edgedriver\msedgedriver.exe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
       - name: Onboarding, real Codex download and registration, scripted task
         shell: pwsh
         env:
           E2E_SCREENSHOTS: ${{ github.workspace }}/e2e-screenshots
         run: |
-          $driver = Start-Process tauri-driver -ArgumentList "--native-driver","$env:EDGEWEBDRIVER\msedgedriver.exe" -PassThru
+          $driver = Start-Process tauri-driver -ArgumentList "--native-driver","$env:EDGE_DRIVER" -PassThru
           Start-Sleep 3
           python Scripts/desktop_e2e.py onboarding $env:APP_EXE
           Stop-Process $driver -ErrorAction SilentlyContinue
@@ -189,7 +198,10 @@ jobs:
           Start-Process $uninstaller -ArgumentList "/S" -Wait
           Start-Sleep 5
           if (Test-Path "$env:LOCALAPPDATA\Sudo Interns\sudo-interns.exe") { throw "app files remain" }
-          "uninstalled"
+          $config = Get-Content "$HOME\.codex\config.toml" -Raw
+          if ($config -match 'mcp_servers\.fawaly_team') { throw "the team registration remains after uninstall" }
+          if ($config -notmatch 'mcp_servers\.keep_me') { throw "uninstall removed another MCP server" }
+          "uninstalled; team registration removed; other MCP server kept"
       - name: Install and remove the MSI
         shell: pwsh
         run: |
@@ -248,8 +260,12 @@ jobs:
           name: screenshots-${{ matrix.runner }}
           path: e2e-screenshots
           if-no-files-found: ignore
-      - name: Remove the deb
+      - name: Disconnect the team, then remove the deb
         run: |
+          # Package removal runs as root and cannot reach a user's agent settings.
+          /usr/bin/sudo-interns-engine disconnect
+          ! grep -q 'mcp_servers.fawaly_team' ~/.codex/config.toml
+          grep -q 'mcp_servers.keep_me' ~/.codex/config.toml
           sudo apt-get remove -y sudo-interns
           test ! -e /usr/bin/sudo-interns
       - name: Run the AppImage from an extracted copy

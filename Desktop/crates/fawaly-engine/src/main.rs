@@ -1,7 +1,7 @@
 //! Console engine started by Codex or Claude Code over MCP stdio.
 
 use fawaly_core::bridge::Bridge;
-use fawaly_core::client_link::ClientLink;
+use fawaly_core::client_link::{self, ClientLink};
 use fawaly_core::confine;
 use fawaly_core::mcp::Server;
 use fawaly_core::model::Agent;
@@ -11,6 +11,38 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 const USAGE: &str = "Usage: sudo-interns-engine mcp --client codex|claude, status, version, allow-workspace PATH, deny-workspace PATH, disconnect, confine-probe";
+
+/// Agent apps start MCP servers with a trimmed environment. The stable launcher
+/// sits inside the data folder, so it can find its data without those variables.
+fn locate_data_root() {
+    if std::env::var_os("SUDO_INTERNS_DATA_DIR").is_some() {
+        return;
+    }
+    let root = std::env::current_exe().ok().and_then(|exe| exe.parent()?.parent().map(PathBuf::from));
+    if let Some(root) = root.filter(|root| root.join(client_link::ROOT_MARKER).is_file()) {
+        // Runs before any thread starts.
+        unsafe { std::env::set_var("SUDO_INTERNS_DATA_DIR", root) };
+    }
+}
+
+/// libdbus finds the session keyring through this variable, which agents often drop.
+#[cfg(target_os = "linux")]
+fn locate_session_bus() {
+    if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some() {
+        return;
+    }
+    unsafe extern "C" {
+        safe fn getuid() -> u32;
+    }
+    let bus = PathBuf::from(format!("/run/user/{}/bus", getuid()));
+    if bus.exists() {
+        // Runs before any thread starts.
+        unsafe { std::env::set_var("DBUS_SESSION_BUS_ADDRESS", format!("unix:path={}", bus.display())) };
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn locate_session_bus() {}
 
 fn engine() -> Result<Engine> {
     let mut engine = Engine::live()?;
@@ -115,6 +147,8 @@ fn exec(_program: &str, _arguments: &[String]) -> Result<ExitCode> {
 }
 
 fn main() -> ExitCode {
+    locate_data_root();
+    locate_session_bus();
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     match run(&arguments) {
         Ok(code) => code,

@@ -14,6 +14,8 @@ use std::time::{Duration, Instant};
 
 pub const SERVER_NAME: &str = "fawaly_team";
 pub const ENGINE_NAME: &str = "sudo-interns-engine";
+/// Marks the data folder so the launcher can locate it from its own path.
+pub const ROOT_MARKER: &str = ".sudo-interns-root";
 
 pub type Execute = Arc<dyn Fn(&LoginCommand, Duration) -> Result<LoginReply> + Send + Sync>;
 
@@ -44,6 +46,7 @@ pub fn prepare_launcher(engine: &Engine, source: &Path) -> Result<PathBuf> {
     let target = launcher_path(engine);
     let folder = target.parent().ok_or_else(|| Error::invalid("Invalid launcher folder."))?.to_path_buf();
     paths::ensure_private_dir(&folder)?;
+    std::fs::write(engine.root.join(ROOT_MARKER), b"")?;
     if let Ok(entries) = std::fs::read_dir(&folder) {
         for entry in entries.flatten() {
             if entry.file_name().to_string_lossy().starts_with(".old-") {

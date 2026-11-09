@@ -346,7 +346,7 @@ fn save_assistant(app: State<'_, App>, input: AssistantInput) -> Reply<()> {
 fn remove_assistant(app: State<'_, App>, agent: String) -> Reply<()> {
     let agent = parse_agent(&agent)?;
     let store = ApiAssistantStore::new(&app.engine.root);
-    if let Some(assistant) = store.load(agent).map_err(text)? {
+    if let Some(assistant) = store.load(agent).map_err(text)?.filter(|assistant| !assistant.is_local()) {
         app.engine.secrets.delete(&assistant.key_account()).map_err(text)?;
     }
     store.remove(agent).map_err(text)
@@ -514,7 +514,7 @@ fn remove_my_data(app: State<'_, App>) -> Reply<()> {
         let _ = link.disconnect(primary);
     }
     let store = ApiAssistantStore::new(&app.engine.root);
-    for assistant in store.all().map_err(text)? {
+    for assistant in store.all().map_err(text)?.into_iter().filter(|assistant| !assistant.is_local()) {
         app.engine.secrets.delete(&assistant.key_account()).map_err(text)?;
     }
     let root = app.engine.root.clone();

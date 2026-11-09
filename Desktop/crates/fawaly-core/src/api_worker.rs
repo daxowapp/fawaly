@@ -31,6 +31,15 @@ fn answer(text: Option<&str>) -> Result<String> {
 }
 
 impl ApiWorker<'_> {
+    /// Local endpoints usually need no key, so a missing keyring must not stop them.
+    fn credential(&self, assistant: &ApiAssistant) -> Result<String> {
+        let stored = self.engine.secrets.get(&assistant.key_account());
+        if assistant.is_local() {
+            return Ok(stored.ok().flatten().unwrap_or_default());
+        }
+        Ok(stored?.unwrap_or_default())
+    }
+
     fn check_stop(&self, deadline: Instant) -> Result<()> {
         if crate::process::CANCELLED.load(Ordering::Relaxed) {
             return Err(Error::Cancelled);
@@ -70,7 +79,7 @@ impl ApiWorker<'_> {
         if !(1..=3600).contains(&timeout) || prompt.is_empty() || prompt.len() > 120 * 1024 {
             return Err(Error::invalid("Invalid worker prompt or timeout."));
         }
-        let key = self.engine.secrets.get(&assistant.key_account())?.unwrap_or_default();
+        let key = self.credential(assistant)?;
         if !assistant.is_local() && key.is_empty() {
             return Err(Error::invalid("Add this service's key in Sudo Interns."));
         }
@@ -194,7 +203,7 @@ impl ApiWorker<'_> {
             return Ok(if assistant.model.is_empty() { vec![] } else { vec![assistant.model.clone()] });
         }
         let base = assistant.endpoint.trim_end_matches("/chat/completions");
-        let key = self.engine.secrets.get(&assistant.key_account())?.unwrap_or_default();
+        let key = self.credential(assistant)?;
         if key.len() > 16_384 || key.contains(['\r', '\n']) {
             return Err(Error::invalid("The service key is invalid."));
         }
@@ -371,6 +380,39 @@ mod tests {
         let error = ApiWorker { engine: &engine, transport, stop_file: None }.run(&assistant, "Hi", None, 30).unwrap_err();
         assert!(error.to_string().contains("No automatic retry or paid fallback"));
         assert_eq!(*count.lock().unwrap(), 1);
+    }
+
+    struct BrokenSecrets;
+
+    impl crate::secrets::SecretStore for BrokenSecrets {
+        fn get(&self, _: &str) -> Result<Option<String>> {
+            Err(Error::invalid("keyring unavailable"))
+        }
+        fn set(&self, _: &str, _: &str) -> Result<()> {
+            Err(Error::invalid("keyring unavailable"))
+        }
+        fn delete(&self, _: &str) -> Result<()> {
+            Err(Error::invalid("keyring unavailable"))
+        }
+    }
+
+    #[test]
+    fn local_assistants_work_without_a_system_keyring() {
+        let root = tempfile::tempdir().unwrap();
+        let engine = Engine::with(root.path().to_path_buf(), root.path().join("home"), Arc::new(BrokenSecrets));
+        let assistant = assistant(Agent::Ollama);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let transport = scripted(vec![json!({"choices":[{"message":{"content":"ok"}}]})], seen.clone());
+        assert_eq!(ApiWorker { engine: &engine, transport, stop_file: None }.run(&assistant, "Hi", None, 30).unwrap(), "ok");
+        assert!(!seen.lock().unwrap()[0].headers.iter().any(|(name, _)| name == "Authorization"));
+    }
+
+    #[test]
+    fn cloud_assistants_fail_closed_without_a_system_keyring() {
+        let root = tempfile::tempdir().unwrap();
+        let engine = Engine::with(root.path().to_path_buf(), root.path().join("home"), Arc::new(BrokenSecrets));
+        let transport: Transport = Arc::new(|_| panic!("no request may be sent"));
+        assert!(ApiWorker { engine: &engine, transport, stop_file: None }.run(&assistant(Agent::Deepseek), "Hi", None, 30).is_err());
     }
 
     #[test]
