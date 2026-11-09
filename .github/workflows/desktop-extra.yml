@@ -145,69 +145,112 @@ jobs:
           while ((Get-Process -Name 'sudo-interns' -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep 1 }
           if (Get-Process -Name 'sudo-interns' -ErrorAction SilentlyContinue) { throw "the app did not close" }
 
-      # Windows PowerShell, because UIAutomationClient always ships with its .NET.
+      # NSIS windows and message boxes are classic Win32 dialogs. UI Automation saw
+      # none of the controls in the language dialog here, so this reads them directly.
       - name: Cancel at the app-running prompt changes nothing
         shell: powershell
         run: |
-          Add-Type -AssemblyName UIAutomationClient
-          Add-Type -AssemblyName UIAutomationTypes
-          $root = [System.Windows.Automation.AutomationElement]::RootElement
-          $children = [System.Windows.Automation.TreeScope]::Children
-          $descendants = [System.Windows.Automation.TreeScope]::Descendants
-          $anything = [System.Windows.Automation.Condition]::TrueCondition
-          $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
-          $classProperty = [System.Windows.Automation.AutomationElement]::ClassNameProperty
-          $typeProperty = [System.Windows.Automation.AutomationElement]::ControlTypeProperty
-          $dialogClass = New-Object System.Windows.Automation.PropertyCondition($classProperty, '#32770')
-          $buttonType = New-Object System.Windows.Automation.PropertyCondition($typeProperty, [System.Windows.Automation.ControlType]::Button)
-          $textType = New-Object System.Windows.Automation.PropertyCondition($typeProperty, [System.Windows.Automation.ControlType]::Text)
-          $comboType = New-Object System.Windows.Automation.PropertyCondition($typeProperty, [System.Windows.Automation.ControlType]::ComboBox)
+          Add-Type -TypeDefinition @"
+          using System;
+          using System.Collections.Generic;
+          using System.Runtime.InteropServices;
+          using System.Text;
 
-          # NSIS windows and message boxes are all class #32770. A message box can
-          # sit at the top level or under its owner, depending on the UIA provider.
-          function Get-Dialogs {
-            foreach ($top in $root.FindAll($children, $anything)) {
-              try {
-                if ($top.Current.ClassName -eq '#32770') {
-                  $top
-                  foreach ($inner in $top.FindAll($descendants, $dialogClass)) { $inner }
-                }
-              } catch { Write-Host "skipped a window: $($_.Exception.Message)" }
+          public class Child {
+              public IntPtr Handle;
+              public string Class;
+              public string Text;
+              public bool Enabled;
+          }
+
+          public static class Win32 {
+              delegate bool Callback(IntPtr window, IntPtr data);
+              [DllImport("user32.dll")] static extern bool EnumWindows(Callback callback, IntPtr data);
+              [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, Callback callback, IntPtr data);
+              [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr window);
+              [DllImport("user32.dll")] static extern bool IsWindowEnabled(IntPtr window);
+              [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+              [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr window, StringBuilder text, int size);
+              [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr size, StringBuilder text);
+              [DllImport("user32.dll")] static extern bool PostMessage(IntPtr window, uint message, IntPtr first, IntPtr second);
+
+              static string ClassOf(IntPtr window) {
+                  var text = new StringBuilder(256);
+                  GetClassName(window, text, text.Capacity);
+                  return text.ToString();
+              }
+
+              public static string TextOf(IntPtr window) {
+                  var text = new StringBuilder(4096);
+                  SendMessage(window, 0x000D, (IntPtr)text.Capacity, text);
+                  return text.ToString();
+              }
+
+              public static uint ProcessOf(IntPtr window) {
+                  uint process;
+                  GetWindowThreadProcessId(window, out process);
+                  return process;
+              }
+
+              public static List<IntPtr> Dialogs() {
+                  var found = new List<IntPtr>();
+                  EnumWindows((window, data) => {
+                      if (IsWindowVisible(window) && ClassOf(window) == "#32770") { found.Add(window); }
+                      return true;
+                  }, IntPtr.Zero);
+                  return found;
+              }
+
+              public static List<Child> Children(IntPtr parent) {
+                  var found = new List<Child>();
+                  EnumChildWindows(parent, (window, data) => {
+                      if (IsWindowVisible(window)) {
+                          found.Add(new Child { Handle = window, Class = ClassOf(window), Text = TextOf(window), Enabled = IsWindowEnabled(window) });
+                      }
+                      return true;
+                  }, IntPtr.Zero);
+                  return found;
+              }
+
+              public static void Click(IntPtr button) {
+                  PostMessage(button, 0x00F5, IntPtr.Zero, IntPtr.Zero);
+              }
+          }
+          "@
+
+          function Get-UninstallerIds { @(Get-Process -Name 'Un','Un_*','Au_*' -ErrorAction SilentlyContinue | ForEach-Object { [uint32]$_.Id }) }
+          function Read-Dialog($handle) {
+            $children = @([Win32]::Children($handle))
+            $buttons = @{}
+            foreach ($child in $children) {
+              if ($child.Class -eq 'Button') { $buttons[($child.Text -replace '&', '').Trim()] = $child }
+            }
+            New-Object PSObject -Property @{
+              Title = [Win32]::TextOf($handle)
+              ProcessId = [Win32]::ProcessOf($handle)
+              Buttons = $buttons
+              Texts = @($children | Where-Object { $_.Class -eq 'Static' } | ForEach-Object { $_.Text })
+              Leaf = (@($children | Where-Object { $_.Class -eq '#32770' }).Count -eq 0)
+              HasCombo = (@($children | Where-Object { $_.Class -eq 'ComboBox' }).Count -gt 0)
             }
           }
-          function Get-Buttons($dialog) {
-            $map = @{}
-            foreach ($button in $dialog.FindAll($descendants, $buttonType)) {
-              # The title bar has its own Close, which would hide the wizard's Close.
-              $parent = $walker.GetParent($button)
-              if ($parent.Current.ControlType.ProgrammaticName -eq 'ControlType.TitleBar') { continue }
-              $map[($button.Current.Name -replace '&', '').Trim()] = $button
+          function Get-UninstallerDialogs {
+            $ids = Get-UninstallerIds
+            foreach ($handle in [Win32]::Dialogs()) {
+              if ($ids -contains [Win32]::ProcessOf($handle)) { Read-Dialog $handle }
             }
-            $map
           }
-          function Get-Texts($dialog) {
-            foreach ($text in $dialog.FindAll($descendants, $textType)) { $text.Current.Name }
+          function Press($dialog, $label, $reason) {
+            Write-Host "pressing '$label' in '$($dialog.Title)': $reason"
+            [Win32]::Click($dialog.Buttons[$label].Handle)
           }
-          # The wizard holds its page as a nested dialog; a message box holds none.
-          # Only a leaf is trusted for OK and Cancel, as the wizard has its own Cancel.
-          function Test-Leaf($dialog) { $null -eq $dialog.FindFirst($descendants, $dialogClass) }
-          function Press($button, $reason) {
-            Write-Host "pressing '$($button.Current.Name)': $reason"
-            $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-          }
-          function Show-Windows($heading) {
+          function Is-Enabled($dialog, $label) { $dialog.Buttons.ContainsKey($label) -and $dialog.Buttons[$label].Enabled }
+          function Show-Dialogs($heading) {
             Write-Host "--- $heading"
-            foreach ($top in $root.FindAll($children, $anything)) {
-              try { Write-Host "window: name='$($top.Current.Name)' class='$($top.Current.ClassName)' pid=$($top.Current.ProcessId)" } catch { Write-Host "window: closed while reading it" }
-            }
-            foreach ($dialog in @(Get-Dialogs)) {
-              try {
-                $labels = (Get-Buttons $dialog).Keys -join ', '
-                $words = @(Get-Texts $dialog) -join ' | '
-                Write-Host "dialog: name='$($dialog.Current.Name)' pid=$($dialog.Current.ProcessId) leaf=$(Test-Leaf $dialog) buttons=[$labels] text=[$words]"
-              } catch { Write-Host "dialog: closed while reading it" }
-            }
             Get-Process -Name 'sudo-interns','Un','Un_*','Au_*' -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "process: $($_.Name) id=$($_.Id)" }
+            foreach ($dialog in @(Get-UninstallerDialogs)) {
+              Write-Host "dialog: title='$($dialog.Title)' pid=$($dialog.ProcessId) leaf=$($dialog.Leaf) buttons=[$($dialog.Buttons.Keys -join ', ')] text=[$($dialog.Texts -join ' | ')]"
+            }
           }
 
           $appProcess = Start-Process $env:APP_EXE -PassThru
@@ -226,73 +269,61 @@ jobs:
           $nextReport = Get-Date
           while (-not $prompt) {
             if ((Get-Date) -gt $deadline) {
-              Show-Windows 'windows when the prompt timed out'
+              Show-Dialogs 'dialogs when the prompt timed out'
               throw "the app-running prompt never appeared (pressed Uninstall: $pressedUninstall)"
             }
             if ((Get-Date) -ge $nextReport) {
-              Show-Windows 'waiting for the app-running prompt'
+              Show-Dialogs 'waiting for the app-running prompt'
               $nextReport = (Get-Date).AddSeconds(15)
             }
-            foreach ($dialog in @(Get-Dialogs)) {
-              try {
-                $buttons = Get-Buttons $dialog
-                if (-not $pressedUninstall -and $buttons.ContainsKey('Uninstall') -and $buttons['Uninstall'].Current.IsEnabled) {
-                  $wizardPid = $dialog.Current.ProcessId
-                  Press $buttons['Uninstall'] 'start the uninstall from the confirm page'
-                  $pressedUninstall = $true
-                  continue
-                }
-                if (-not (Test-Leaf $dialog)) { continue }
-                $running = @(Get-Texts $dialog) -match 'is running'
-                if ($pressedUninstall -and $running -and $buttons.ContainsKey('OK') -and $buttons.ContainsKey('Cancel')) {
-                  Show-Windows 'the app-running prompt is showing'
-                  $prompt = $running -join ' '
-                  Press $buttons['Cancel'] 'refuse to close the running app'
-                  break
-                }
-                # displayLanguageSelector is on, so the uninstaller may ask first.
-                if ($null -ne $dialog.FindFirst($descendants, $comboType) -and $buttons.ContainsKey('OK')) {
-                  Press $buttons['OK'] 'accept the language selector'
-                }
-              } catch { Write-Host "retrying: $($_.Exception.Message)" }
+            foreach ($dialog in @(Get-UninstallerDialogs)) {
+              $running = @($dialog.Texts | Where-Object { $_ -match 'is running' })
+              if ($dialog.HasCombo -and (Is-Enabled $dialog 'OK')) {
+                # displayLanguageSelector is on, so the uninstaller asks first.
+                Press $dialog 'OK' 'accept the language selector'
+              } elseif (-not $pressedUninstall -and (Is-Enabled $dialog 'Uninstall')) {
+                $wizardPid = $dialog.ProcessId
+                Press $dialog 'Uninstall' 'start the uninstall from the confirm page'
+                $pressedUninstall = $true
+              } elseif ($pressedUninstall -and $dialog.Leaf -and $running.Count -gt 0 -and $dialog.Buttons.ContainsKey('OK') -and $dialog.Buttons.ContainsKey('Cancel')) {
+                Show-Dialogs 'the app-running prompt is showing'
+                $prompt = $running -join ' '
+                Press $dialog 'Cancel' 'refuse to close the running app'
+                break
+              }
             }
             Start-Sleep -Milliseconds 300
           }
           "the prompt was seen: $prompt"
 
           # After the Abort the wizard stays open with Close. OK is pressed only on
-          # a message box without Cancel, so the running-app prompt can never get it.
+          # a dialog without Cancel, so the running-app prompt can never get it.
           $deadline = (Get-Date).AddMinutes(2)
           $nextReport = Get-Date
           while (Get-Process -Id $wizardPid -ErrorAction SilentlyContinue) {
             if ((Get-Date) -gt $deadline) {
-              Show-Windows 'windows when the wizard failed to close'
+              Show-Dialogs 'dialogs when the wizard failed to close'
               throw "the uninstall wizard did not close after Cancel"
             }
             if ((Get-Date) -ge $nextReport) {
-              Show-Windows 'closing the wizard'
+              Show-Dialogs 'closing the wizard'
               $nextReport = (Get-Date).AddSeconds(15)
             }
-            foreach ($dialog in @(Get-Dialogs)) {
-              try {
-                if ($dialog.Current.ProcessId -ne $wizardPid) { continue }
-                $buttons = Get-Buttons $dialog
-                if ($buttons.ContainsKey('Close') -and $buttons['Close'].Current.IsEnabled) {
-                  Press $buttons['Close'] 'close the stopped wizard'
-                } elseif (Test-Leaf $dialog) {
-                  if ($buttons.ContainsKey('Cancel')) {
-                    if ($buttons['Cancel'].Current.IsEnabled) { Press $buttons['Cancel'] 'dismiss a remaining dialog' }
-                  } elseif ($buttons.ContainsKey('OK')) {
-                    Press $buttons['OK'] 'dismiss a remaining notice'
-                  }
-                } elseif ($buttons.ContainsKey('Cancel') -and $buttons['Cancel'].Current.IsEnabled) {
-                  Press $buttons['Cancel'] 'leave the wizard'
-                }
-              } catch { Write-Host "retrying: $($_.Exception.Message)" }
+            foreach ($dialog in @(Get-UninstallerDialogs)) {
+              if ($dialog.ProcessId -ne $wizardPid) { continue }
+              if (Is-Enabled $dialog 'Close') {
+                Press $dialog 'Close' 'close the stopped wizard'
+              } elseif (Is-Enabled $dialog 'Yes') {
+                Press $dialog 'Yes' 'confirm leaving the wizard'
+              } elseif (Is-Enabled $dialog 'Cancel') {
+                Press $dialog 'Cancel' 'leave the wizard'
+              } elseif ($dialog.Leaf -and (Is-Enabled $dialog 'OK')) {
+                Press $dialog 'OK' 'dismiss a remaining notice'
+              }
             }
             Start-Sleep -Milliseconds 500
           }
-          Show-Windows 'after the wizard closed'
+          Show-Dialogs 'after the wizard closed'
 
           if (-not $prompt) { throw "the app-running prompt was not seen" }
           if (-not $pressedUninstall) { throw "the Uninstall button was never pressed" }
