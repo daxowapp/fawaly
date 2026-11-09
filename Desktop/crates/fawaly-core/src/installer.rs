@@ -235,7 +235,7 @@ fn fetch_into(agent: Agent, staging: &Path, cancel: &AtomicBool) -> Result<()> {
             } else {
                 extract_tar_gz(&archive, staging)?;
             }
-            std::fs::remove_file(&archive)?;
+            retry_while_denied(|| std::fs::remove_file(&archive), Duration::from_millis(250))?;
             normalize_entry(staging, agent, platform_name)
         }
         Agent::Claude => {
@@ -283,6 +283,20 @@ fn find_entry(directory: &Path, agent: Agent) -> Option<PathBuf> {
     [directory.join(&name), directory.join("bin").join(&name)].into_iter().find(|path| path.is_file())
 }
 
+/// Windows antivirus can hold a new executable open for a moment after it runs.
+fn retry_while_denied<T>(mut action: impl FnMut() -> std::io::Result<T>, pause: Duration) -> std::io::Result<T> {
+    let mut attempts = 0;
+    loop {
+        match action() {
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied && attempts < 40 => {
+                attempts += 1;
+                std::thread::sleep(pause);
+            }
+            other => return other,
+        }
+    }
+}
+
 /// Installs under the user's data folder. No administrator rights are involved.
 pub fn install(engine: &Engine, agent: Agent, cancel: &AtomicBool) -> Result<PathBuf> {
     let runtimes = engine.root.join("runtimes");
@@ -304,7 +318,7 @@ pub fn install(engine: &Engine, agent: Agent, cancel: &AtomicBool) -> Result<Pat
         if target.exists() {
             std::fs::remove_dir_all(&target)?;
         }
-        std::fs::rename(&staging, &target)?;
+        retry_while_denied(|| std::fs::rename(&staging, &target), Duration::from_millis(250))?;
         find_entry(&target, agent).ok_or_else(|| Error::invalid("The service could not be located after preparation."))
     })();
     let _ = std::fs::remove_dir_all(&staging);
@@ -314,6 +328,33 @@ pub fn install(engine: &Engine, agent: Agent, cancel: &AtomicBool) -> Result<Pat
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_briefly_locked_file_is_retried_but_other_errors_are_not() {
+        let mut calls = 0;
+        let outcome = retry_while_denied(
+            || {
+                calls += 1;
+                if calls < 3 {
+                    Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+                } else {
+                    Ok(calls)
+                }
+            },
+            Duration::ZERO,
+        );
+        assert_eq!(outcome.unwrap(), 3);
+        let mut calls = 0;
+        let outcome: std::io::Result<()> = retry_while_denied(
+            || {
+                calls += 1;
+                Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+            },
+            Duration::ZERO,
+        );
+        assert!(outcome.is_err());
+        assert_eq!(calls, 1);
+    }
 
     #[test]
     fn download_hosts_are_limited() {

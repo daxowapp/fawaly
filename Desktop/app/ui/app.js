@@ -1018,6 +1018,12 @@ async function start() {
   if (ui.data.state.team) ui.draft = structuredClone(ui.data.state.team);
   if (ui.data.state.onboardingVersion != null) goto("home");
   else render();
+  if (ui.data.selftest) {
+    const report = () => invoke("selftest_report", { text: document.body.innerText, dir: document.documentElement.dir });
+    await report();
+    await setArabic(!ui.arabic);
+    await report();
+  }
 }
 
 start();

@@ -99,7 +99,22 @@ fn bootstrap(app: State<'_, App>) -> Reply<Value> {
         "capabilities": support::capabilities(&app.engine),
         "workspaces": app.engine.workspaces().map_err(text)?,
         "version": fawaly_core::VERSION,
+        "selftest": std::env::var_os(SELFTEST_FILE).is_some(),
     }))
+}
+
+/// Packaging tests set this to confirm the page really rendered in the system
+/// WebView. Nothing is written unless the variable is present.
+const SELFTEST_FILE: &str = "SUDO_INTERNS_UI_SELFTEST";
+
+#[tauri::command(async)]
+fn selftest_report(text: String, dir: String) -> Reply<()> {
+    use std::io::Write;
+    let Some(path) = std::env::var_os(SELFTEST_FILE) else {
+        return Ok(());
+    };
+    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path).map_err(self::text)?;
+    writeln!(file, "{}", json!({"dir": dir, "text": text})).map_err(self::text)
 }
 
 #[tauri::command(async)]
@@ -539,7 +554,7 @@ fn main() {
         })
         .manage(state)
         .invoke_handler(tauri::generate_handler![
-            bootstrap, set_preferences, save_team, save_rules, finish_onboarding, cancel_operation, prepare_service, sign_in, sign_out, connect_team, connection_status,
+            bootstrap, selftest_report, set_preferences, save_team, save_rules, finish_onboarding, cancel_operation, prepare_service, sign_in, sign_out, connect_team, connection_status,
             disconnect_team, choose_project, pick_folder, revoke_project, open_link, activity, save_assistant, remove_assistant, test_assistant, list_models,
             set_worker_model, openrouter_sign_in, skills_list, skills_preview, skills_install, daily_load, daily_mark, daily_brief, remove_my_data
         ])

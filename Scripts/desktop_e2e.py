@@ -9,6 +9,7 @@ Uses only the standard library. The scripted primary proves the app, engine and
 tools work on this OS. It does not prove a real model decides to use them.
 """
 
+import http.client
 import json
 import os
 import pathlib
@@ -66,6 +67,26 @@ def launch_once(app, env, seconds):
     return alive, process.stderr.read().decode(errors="replace")[-2000:]
 
 
+def ui_selftest(app):
+    """Proves the page rendered and IPC works in this system WebView, in both languages."""
+    folder = pathlib.Path(tempfile.mkdtemp(prefix="sudo-interns-ui-"))
+    report = folder / "report.jsonl"
+    env = {**os.environ, "SUDO_INTERNS_DATA_DIR": str(folder / "data"), "SUDO_INTERNS_UI_SELFTEST": str(report)}
+    process = subprocess.Popen([str(app)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    deadline = time.time() + 120
+    lines = []
+    while time.time() < deadline and len(lines) < 2:
+        assert process.poll() is None, f"app exited during the UI check\n{process.stderr.read().decode(errors='replace')[-2000:]}"
+        lines = report.read_text(encoding="utf-8").splitlines() if report.exists() else []
+        time.sleep(0.5)
+    process.terminate()
+    assert len(lines) >= 2, "the page never reported that it rendered"
+    english, arabic = (json.loads(line) for line in lines[:2])
+    assert english["dir"] == "ltr" and "Sudo Interns" in english["text"], english
+    assert arabic["dir"] == "rtl" and "الفواعلي" in arabic["text"], arabic
+    log("UI rendered in English (LTR) and Arabic (RTL)")
+
+
 def smoke(app, engine_path=None):
     data = pathlib.Path(tempfile.mkdtemp(prefix="sudo-interns-smoke-"))
     env = {**os.environ, "SUDO_INTERNS_DATA_DIR": str(data)}
@@ -84,6 +105,7 @@ def smoke(app, engine_path=None):
     log("stable engine launcher exists")
     assert not (data / "workshop.json").exists(), "a fresh profile must stay unconfigured until onboarding"
     assert {"delegate"} <= mcp_tools([str(launcher), "mcp", "--client", "codex"], env)
+    ui_selftest(app)
     log("smoke passed")
 
 
@@ -130,11 +152,18 @@ class WebDriver:
     def call(self, method, path, body=None):
         data = None if body is None else json.dumps(body).encode()
         request = urllib.request.Request(DRIVER + path, data=data, method=method, headers={"Content-Type": "application/json"})
-        try:
-            with urllib.request.urlopen(request, timeout=300) as response:
-                return json.load(response)["value"]
-        except urllib.error.HTTPError as error:
-            raise RuntimeError(f"{method} {path}: {error.read().decode(errors='replace')}") from None
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(request, timeout=300) as response:
+                    return json.load(response)["value"]
+            except urllib.error.HTTPError as error:
+                raise RuntimeError(f"{method} {path}: {error.read().decode(errors='replace')}") from None
+            except (http.client.RemoteDisconnected, ConnectionResetError) as error:
+                # tauri-driver can reuse a connection the native driver already closed.
+                if attempt == 2:
+                    raise
+                log(f"driver connection dropped ({error}); retrying {method} {path}")
+                time.sleep(1)
 
     def do(self, method, path, body=None):
         return self.call(method, f"/session/{self.session}{path}", body)
