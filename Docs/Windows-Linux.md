@@ -2,7 +2,7 @@
 
 The Windows and Linux app lives in [`Desktop/`](../Desktop). It is a Tauri 2 app with a Rust core and a plain HTML, CSS and JavaScript interface. The macOS app stays native SwiftUI. Both versions share the same MCP tools, team model, skills catalog, copy and artwork.
 
-**Status: preview. Not released.** Installers are unsigned and come from CI. See [what has been tested](#what-has-been-tested).
+**Status: public preview.** [Installers](https://github.com/daxowapp/fawaly/releases/tag/desktop-v0.7.0) are unsigned and come from CI. See [what has been tested](#what-has-been-tested).
 
 ## Install
 
@@ -35,7 +35,7 @@ A busy assigned worker never rolls over to a paid one. The request stops and say
 
 ## How the primary uses the team
 
-The app cannot make a model follow instructions, so it does two things. It tells the primary to use the team before changing files, unless the change is one obvious line the user spelled out or the user said not to. And when your advisor policy is **Important**, the engine refuses the first project delegation of each session until the primary has tried to consult. A busy or failing advisor does not block the work. The engine cannot stop a primary from editing files with its own tools if you have allowed them. The macOS app keeps the earlier wording and has no such check.
+The app cannot make a model follow instructions, so it does two things. It tells the primary to use the team before changing files, unless the change is one obvious line the user spelled out or the user said not to. And when your advisor policy is **Important**, the engine refuses the first project delegation of each session until the primary has tried to consult. A busy or failing advisor does not block the work. The engine cannot stop a primary from editing files with its own tools if you have allowed them. The macOS app has the same check since 0.7.1.
 
 ## Not available yet
 

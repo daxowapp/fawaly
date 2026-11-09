@@ -33,7 +33,7 @@ Keep working in your usual **Codex or Claude Code**. Sudo Interns connects an in
 ## What’s new in 0.7.1
 
 - **Your team comes first.** The primary agent is told to use the team before changing files. When your advisor policy is **Important**, the engine refuses the first project delegation of a session until the advisor has been consulted. A failed or busy advisor does not block the work.
-- **Windows and Linux preview.** [Installers](https://github.com/daxowapp/fawaly/releases/tag/desktop-v0.7.0) are available. They are unsigned, so Windows SmartScreen will warn you. See [what has and has not been tested](https://github.com/daxowapp/fawaly/blob/feature/windows-linux/Docs/Windows-Linux.md).
+- **Windows and Linux preview.** [Installers](https://github.com/daxowapp/fawaly/releases/tag/desktop-v0.7.0) are available. They are unsigned, so Windows SmartScreen will warn you. See [what has and has not been tested](Docs/Windows-Linux.md).
 
 ## What’s new in 0.7.0
 
