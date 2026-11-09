@@ -4,11 +4,11 @@ Fawaly is free software under AGPL-3.0-or-later. The official app stays free. Pr
 
 ## First signed release
 
-The earlier local preview uses an Apple Development certificate for stable local identity and intentionally refuses in-app replacement. CI builds are ad-hoc signed. Build 29 now has a notarized Developer ID release candidate that opens from Applications on the current Mac. The public download link and signed update feed are pending release acceptance. Once published, subsequent updates use Sparkle 2.10.1 with the embedded Ed25519 public key. Update checks are manual, do not send workshop files, and never start while workers, comparisons or setup are active. An exclusive cross-process lease prevents new jobs until the update dialog finishes, or until a pending installation restarts the app.
+The earlier local preview uses an Apple Development certificate for stable local identity and intentionally refuses in-app replacement. CI builds are ad-hoc signed. Build 29 now has a notarized Developer ID release candidate that opens from Applications on the current Mac. Version 0.7.1 (build 30) is published with a signed update feed. Once published, subsequent updates use Sparkle 2.10.1 with the embedded Ed25519 public key. Update checks are manual, do not send workshop files, and never start while workers, comparisons or setup are active. An exclusive cross-process lease prevents new jobs until the update dialog finishes, or until a pending installation restarts the app.
 
 The publisher's update signing key was generated with Sparkle's official `generate_keys` tool and is stored in the login Keychain under account `com.daxow.fawaly.updates`. Only its public verification key is committed. Fork publishers must use their own key and feed. Keep a secure recovery copy of publisher signing material outside the repository.
 
-The current Mac has a verified Developer ID Application identity. Xcode notarization, the stapled ZIP extraction and same-Mac launch passed. A clean-machine install, a real signed upgrade, and publishing the download and update feed remain separate acceptance steps. The local development preview is not a distribution artifact.
+The current Mac has a verified Developer ID Application identity. Xcode notarization, the stapled ZIP extraction and same-Mac launch passed. A clean-machine install and a real signed upgrade from 0.7.0 have not been verified yet. The 0.7.1 ZIP and update feed are published. The local development preview is not a distribution artifact.
 
 ## Maintainer packaging
 
