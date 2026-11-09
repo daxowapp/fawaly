@@ -39,6 +39,12 @@ jobs:
           Invoke-WebRequest "https://msedgedriver.microsoft.com/$version/edgedriver_win64.zip" -OutFile "$env:RUNNER_TEMP\edgedriver.zip"
           Expand-Archive "$env:RUNNER_TEMP\edgedriver.zip" "$env:RUNNER_TEMP\edgedriver"
           "EDGE_DRIVER=$env:RUNNER_TEMP\edgedriver\msedgedriver.exe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+      - name: Use the engine built from this commit
+        shell: pwsh
+        run: |
+          cargo build --manifest-path Desktop/Cargo.toml -p fawaly-engine --release
+          if ($LASTEXITCODE -ne 0) { throw "engine build failed" }
+          Copy-Item Desktop\target\release\sudo-interns-engine.exe "$env:LOCALAPPDATA\Sudo Interns\sudo-interns-engine.exe" -Force
       - name: Real Claude Code primary on a test project
         shell: pwsh
         env:
@@ -73,6 +79,11 @@ jobs:
           sudo apt-get install -y xvfb webkit2gtk-driver
           rustup toolchain install stable --profile minimal
           cargo install tauri-driver --version "$TAURI_DRIVER_VERSION" --locked
+      - name: Use the engine built from this commit
+        run: |
+          sudo apt-get install -y libdbus-1-dev pkg-config
+          cargo build --manifest-path Desktop/Cargo.toml -p fawaly-engine --release
+          sudo cp Desktop/target/release/sudo-interns-engine /usr/bin/sudo-interns-engine
       - name: Real Claude Code primary on a test project
         env:
           FAWALY_TEST_CLAUDE_TOKEN: ${{ secrets.FAWALY_TEST_CLAUDE_TOKEN }}
