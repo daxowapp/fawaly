@@ -7,7 +7,7 @@
 
 A free, open-source macOS workshop for your AI coding crew. Your primary leads, an advisor questions the plan, and the interns do the lifting. Hard hats included. Independent review required.
 
-[Website & Mac download](https://daxow.com/fawaly) · [العربية](#العربية) · [Get started](#get-started) · [Contribute](CONTRIBUTING.md) · [License](LICENSE)
+[Download for Mac](https://github.com/daxowapp/fawaly/releases/tag/v0.7.0) · [Website](https://daxow.com/fawaly) · [العربية](#العربية) · [Get started](#get-started) · [Contribute](CONTRIBUTING.md) · [License](LICENSE)
 
 [![macOS build and secret scan](https://github.com/daxowapp/fawaly/actions/workflows/macos.yml/badge.svg)](https://github.com/daxowapp/fawaly/actions/workflows/macos.yml)
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black)
@@ -24,9 +24,7 @@ Keep working in your usual **Codex or Claude Code**. Sudo Interns connects an in
 
 **The official app is free and will remain free.** No app subscription, paid unlocks, or artificial feature tiers. AI provider accounts, subscriptions, and usage are separate and subject to each provider’s terms. The interns are free; their providers still keep a tab.
 
-> **Preview:** this is a working reconstruction of Fawaly, not a claim of complete historical feature parity. The current source is buildable and tested locally. A production-signed, notarized public installer is not available yet. See [verification and limits](Docs/Verification.md) and the [public source security review](Docs/Security-Review.md).
-
-> Production status: notarized macOS release candidate verified; public download pending. 157 tests passed locally and on native Apple Silicon/Intel CI. [Readiness report and remaining Apple distribution checks](Docs/Production-Readiness.md).
+> **Public preview.** Apple notarized the direct Mac build. We tested it on the development Mac and ran 157 tests on each architecture in CI. Clean-Mac installation and a signed automatic upgrade still need verification. [Release notes](https://github.com/daxowapp/fawaly/releases/tag/v0.7.0) · [Readiness report](Docs/Production-Readiness.md).
 
 ## How the team works
 
@@ -49,9 +47,9 @@ An agent has one role in a saved team. A typical team is **Codex → Claude advi
 
 ## Get started
 
-**[Fawaly on Daxow — Mac downloads and updates](https://daxow.com/fawaly).** This is the official product page to check for the Mac download when the signed installer is ready. This repository currently provides source; it does not yet publish a notarized installer.
+The signed, notarized preview supports macOS 14 or later on Apple Silicon and Intel Macs.
 
-1. Build and open the app using the developer instructions below. A verified public installer will be documented here when available.
+1. [Download the Mac ZIP](https://github.com/daxowapp/fawaly/releases/download/v0.7.0/Sudo-Interns-0.7.0.zip), unzip it, and move Sudo Interns to Applications. Open it from there.
 2. Follow the Arabic or English setup: choose your primary, advisor, and workers.
 3. Let Fawaly prepare the official supporting tools. Sign in through each provider’s own browser flow. No Terminal commands or pasted setup tokens.
 4. Connect the team. Fawaly registers MCP in your primary agent’s user settings. Reopen that client or start a new chat if it cached its tools.
@@ -129,7 +127,7 @@ Private modifications do not automatically require a public repository, and the 
 
 التجهيز بيتم من واجهة التطبيق: اختيار الفريق، تجهيز الأدوات الرسمية، تسجيل دخول من متصفح الخدمة، وربط الفريق. المستخدم العادي مش محتاج يكتب أوامر Terminal. تختار فولدر المشروع عشان تسمح للعمال بتعديله، والأساسي لازم يراجع الشغل قبل اعتماده.
 
-دي نسخة مستعادة ومطوّرة من التطبيق، وفيها أجزاء قديمة لسه محتاجة شغل. مفيش حاليًا مُثبّت عام موقّع وموثّق من Apple. المطور يقدر يبنيها من المصدر بالخطوات اللي فوق. [موقع الفواعلي على Daxow ومكان متابعة تنزيل الماك](https://daxow.com/fawaly).
+النسخة التجريبية العامة موقّعة وموثّقة من Apple، وتشتغل على macOS 14 أو أحدث. فك الضغط وانقل Sudo Interns لفولدر Applications وافتحه من هناك. [نزّل نسخة الماك](https://github.com/daxowapp/fawaly/releases/tag/v0.7.0).
 
 الرخصة AGPLv3 أو أحدث بتضمن حقوق الاستخدام والتعديل والمشاركة، وبترجع حق الوصول للمصدر لمستخدمي النسخ الموزعة والخدمات المعدّلة حسب شروطها. بنشجّع كل تحسين يرجع هنا للمجتمع؛ إرسال Pull Request مش شرط إجباري في الرخصة، والتعديلات الخاصة مش لازم تتحول تلقائيًا لمشروع عام.
 
