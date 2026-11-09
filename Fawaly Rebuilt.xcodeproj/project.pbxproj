@@ -996,8 +996,8 @@
 				"PRODUCT_MODULE_NAME" = "FawalyApp";
 				"ENABLE_DEBUG_DYLIB" = "NO";
 				"PRODUCT_BUNDLE_IDENTIFIER" = "com.daxow.fawaly.rebuilt";
-				"MARKETING_VERSION" = "0.7.0";
-				"CURRENT_PROJECT_VERSION" = "29";
+				"MARKETING_VERSION" = "0.7.1";
+				"CURRENT_PROJECT_VERSION" = "30";
 				"INFOPLIST_KEY_CFBundleDisplayName" = "Sudo Interns";
 				"ENABLE_HARDENED_RUNTIME" = "YES";
 				"GENERATE_INFOPLIST_FILE" = "NO";
@@ -1022,8 +1022,8 @@
 				"PRODUCT_MODULE_NAME" = "FawalyApp";
 				"ENABLE_DEBUG_DYLIB" = "NO";
 				"PRODUCT_BUNDLE_IDENTIFIER" = "com.daxow.fawaly.rebuilt";
-				"MARKETING_VERSION" = "0.7.0";
-				"CURRENT_PROJECT_VERSION" = "29";
+				"MARKETING_VERSION" = "0.7.1";
+				"CURRENT_PROJECT_VERSION" = "30";
 				"INFOPLIST_KEY_CFBundleDisplayName" = "Sudo Interns";
 				"ENABLE_HARDENED_RUNTIME" = "YES";
 				"GENERATE_INFOPLIST_FILE" = "NO";

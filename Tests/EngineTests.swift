@@ -39,6 +39,18 @@ private func engineFixture() throws -> URL {
     }
 }
 
+@Test func MCPInstructionsPutTheTeamFirstAndStayWithinClientLimits() async throws {
+    let root = try engineFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let server = EngineMCP(bridge: EngineBridge(configuration: .init(root: root), client: .claude))
+    var initialized = false
+    let hello = await server.handle(Data(#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#.utf8), initialized: &initialized)
+    let instructions = try #require((hello?["result"] as? [String: Any])?["instructions"] as? String)
+    #expect(instructions.utf8.count < 2_048, "Clients may cut longer instructions")
+    #expect(String(instructions.prefix(200)).contains("Before you change any file, use the team"))
+    #expect(instructions.contains("before your first project delegate, which is refused until you try"))
+}
+
 @Test func isolatedCLIInvocationsUseSafeFlagsAndStdin() throws {
     let directory = try engineFixture()
     defer { try? FileManager.default.removeItem(at: directory) }
