@@ -404,6 +404,32 @@ def start_driver():
     return process
 
 
+def read_claude_events(stream):
+    """Logs what the model was offered and what it chose. Returns the final result."""
+    result = {}
+    for line in stream.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        kind = event.get("type")
+        if kind == "system" and event.get("subtype") == "init":
+            tools = event.get("tools", [])
+            log(f"MCP servers: {event.get('mcp_servers')}; team tools offered: {[name for name in tools if 'fawaly_team' in name]}; ToolSearch offered: {'ToolSearch' in tools}; tools in all: {len(tools)}")
+        elif kind in ("assistant", "user"):
+            content = event.get("message", {}).get("content", [])
+            for block in content if isinstance(content, list) else []:
+                if block.get("type") == "tool_use":
+                    log(f"model used {block.get('name')}: {json.dumps(block.get('input'), ensure_ascii=False)[:300]}")
+                elif block.get("type") == "text":
+                    log(f"model said: {block.get('text', '')[:400]}")
+                elif block.get("type") == "tool_result" and block.get("is_error"):
+                    log(f"tool error: {str(block.get('content'))[:300]}")
+        elif kind == "result":
+            result = event
+    return result
+
+
 def real_primary(app):
     """A real Claude Code model leads, with no step-by-step direction.
 
@@ -458,7 +484,7 @@ def real_primary(app):
     tools = [f"mcp__fawaly_team__{name}" for name in ("status", "roster_get", "consult", "consult_decide", "delegate", "review")]
     log("starting the real Claude Code primary")
     done_run = subprocess.run(
-        [str(claude), "-p", "Update greeting.txt in this project so it says exactly: hello team", "--output-format", "json", "--max-turns", "30", "--allowedTools", ",".join([*tools, "Read", "Glob", "Grep"])],
+        [str(claude), "-p", "Update greeting.txt in this project so it says exactly: hello team", "--output-format", "stream-json", "--verbose", "--max-turns", "30", "--allowedTools", ",".join([*tools, "Read", "Glob", "Grep"])],
         cwd=project,
         env={**os.environ, "CLAUDE_CODE_OAUTH_TOKEN": token, "DISABLE_AUTOUPDATER": "1"},
         capture_output=True,
@@ -468,8 +494,8 @@ def real_primary(app):
     )
     del token
     if done_run.returncode != 0:
-        log(f"Claude Code exited with {done_run.returncode}: {done_run.stdout[-1500:]} {done_run.stderr[-1500:]}")
-    summary = json.loads(done_run.stdout)
+        log(f"Claude Code exited with {done_run.returncode}: {done_run.stderr[-1500:]}")
+    summary = read_claude_events(done_run.stdout)
     log(f"turns: {summary.get('num_turns')}; denied tools: {[item.get('tool_name') for item in summary.get('permission_denials', [])]}")
     log(f"final message: {str(summary.get('result'))[:1500]}")
 
