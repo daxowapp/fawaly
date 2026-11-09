@@ -1,0 +1,131 @@
+# Has the app launch a real Claude Code CLI as a worker on already-built packages.
+# It spends the account behind FAWALY_TEST_CLAUDE_TOKEN, so it runs only when
+# the test/real-worker branch is pushed, or when a run of it is re-run.
+name: Desktop real worker agent
+on:
+  push:
+    branches: [test/real-worker]
+permissions:
+  contents: read
+  actions: read
+env:
+  PACKAGES_RUN: "42626337009"
+  TAURI_DRIVER_VERSION: "2.1.0"
+jobs:
+  windows:
+    name: Real worker (windows-2022)
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sudo-interns-windows-x64
+          path: packages
+          run-id: ${{ env.PACKAGES_RUN }}
+          github-token: ${{ github.token }}
+      - name: Install the app and UI test tools
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem packages -Recurse -Filter *setup.exe | Select-Object -First 1
+          if (-not $installer) { throw "no installer in the package artifact" }
+          Start-Process $installer.FullName -ArgumentList "/S" -Wait
+          if (-not (Test-Path "$env:LOCALAPPDATA\Sudo Interns\sudo-interns.exe")) { throw "the app was not installed" }
+          rustup toolchain install stable --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw "rustup failed" }
+          cargo install tauri-driver --version "$env:TAURI_DRIVER_VERSION" --locked
+          if ($LASTEXITCODE -ne 0) { throw "tauri-driver install failed" }
+          $id = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $keys = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$id", "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$id", "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$id"
+          $version = $keys | ForEach-Object { (Get-ItemProperty $_ -ErrorAction SilentlyContinue).pv } | Where-Object { $_ } | Select-Object -First 1
+          if (-not $version) { throw "WebView2 runtime version not found" }
+          Invoke-WebRequest "https://msedgedriver.microsoft.com/$version/edgedriver_win64.zip" -OutFile "$env:RUNNER_TEMP\edgedriver.zip"
+          Expand-Archive "$env:RUNNER_TEMP\edgedriver.zip" "$env:RUNNER_TEMP\edgedriver"
+          if (-not (Test-Path "$env:RUNNER_TEMP\edgedriver\msedgedriver.exe")) { throw "msedgedriver missing" }
+          "EDGE_DRIVER=$env:RUNNER_TEMP\edgedriver\msedgedriver.exe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+      - name: Use the engine built from this commit
+        shell: pwsh
+        run: |
+          cargo build --manifest-path Desktop/Cargo.toml -p fawaly-engine --release
+          if ($LASTEXITCODE -ne 0) { throw "engine build failed" }
+          Copy-Item Desktop\target\release\sudo-interns-engine.exe "$env:LOCALAPPDATA\Sudo Interns\sudo-interns-engine.exe" -Force
+      - name: Confirm the system secret store works
+        shell: pwsh
+        run: |
+          & "$env:LOCALAPPDATA\Sudo Interns\sudo-interns-engine.exe" secrets-probe
+          if ($LASTEXITCODE -ne 0) { throw "Windows Credential Manager is not usable" }
+      - name: Real Claude Code worker on a test project
+        shell: pwsh
+        env:
+          FAWALY_TEST_CLAUDE_TOKEN: ${{ secrets.FAWALY_TEST_CLAUDE_TOKEN }}
+          E2E_SCREENSHOTS: ${{ github.workspace }}/e2e-screenshots
+        run: python Scripts/desktop_e2e.py real-worker "$env:LOCALAPPDATA\Sudo Interns\sudo-interns.exe"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: real-worker-windows
+          path: e2e-screenshots
+          if-no-files-found: ignore
+
+  linux:
+    name: Real worker (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sudo-interns-linux-x64
+          path: packages
+          run-id: ${{ env.PACKAGES_RUN }}
+          github-token: ${{ github.token }}
+      - name: Install the app and UI test tools
+        run: |
+          sudo apt-get update
+          deb="$(find "$PWD/packages" -name '*.deb' -print -quit)"
+          test -n "$deb"
+          sudo apt-get install -y "$deb"
+          sudo apt-get install -y xvfb webkit2gtk-driver gnome-keyring dbus-x11 libsecret-tools
+          rustup toolchain install stable --profile minimal
+          cargo install tauri-driver --version "$TAURI_DRIVER_VERSION" --locked
+          test -x /usr/bin/sudo-interns
+          for tool in dbus-run-session gnome-keyring-daemon secret-tool xvfb-run tauri-driver WebKitWebDriver; do
+            command -v "$tool"
+          done
+      - name: Use the engine built from this commit
+        run: |
+          sudo apt-get install -y libdbus-1-dev pkg-config
+          cargo build --manifest-path Desktop/Cargo.toml -p fawaly-engine --release
+          sudo cp Desktop/target/release/sudo-interns-engine /usr/bin/sudo-interns-engine
+      # The app has no plaintext fallback, so the test runs inside a real Secret
+      # Service session. dbus-daemon passes its environment to every service it
+      # starts and xvfb-run to Xvfb, so the token stays out of the environment.
+      # It moves through a private file that the test deletes when it reads it.
+      - name: Real Claude Code worker on a test project
+        env:
+          FAWALY_TEST_CLAUDE_TOKEN: ${{ secrets.FAWALY_TEST_CLAUDE_TOKEN }}
+          E2E_SCREENSHOTS: ${{ github.workspace }}/e2e-screenshots
+        run: |
+          token="$FAWALY_TEST_CLAUDE_TOKEN"
+          unset FAWALY_TEST_CLAUDE_TOKEN
+          token_file="$(mktemp -p "$RUNNER_TEMP")"
+          trap 'rm -f "$token_file"' EXIT
+          printf '%s' "$token" > "$token_file"
+          unset token
+          test -s "$token_file"
+          export FAWALY_TEST_CLAUDE_TOKEN_FILE="$token_file"
+          dbus-run-session -- bash -euo pipefail -c '
+            echo -n test | gnome-keyring-daemon --unlock --components=secrets
+            /usr/bin/sudo-interns-engine secrets-probe
+            xvfb-run -a python3 Scripts/desktop_e2e.py real-worker /usr/bin/sudo-interns
+          '
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: real-worker-linux
+          path: e2e-screenshots
+          if-no-files-found: ignore
