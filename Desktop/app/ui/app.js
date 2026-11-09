@@ -26,6 +26,7 @@ const ui = {
   modal: null,
   apiForm: {},
   models: {},
+  open: {},
 };
 
 /* ---------- Copy ---------- */
@@ -89,6 +90,11 @@ function h(tag, props, ...children) {
     node.append(child instanceof Node ? child : document.createTextNode(String(child)));
   }
   return node;
+}
+
+// render() rebuilds the page, so which sections are expanded has to be kept here.
+function disclosure(key, props, openByDefault, ...children) {
+  return h("details", { ...props, open: ui.open[key] ?? openByDefault, ontoggle: (event) => { ui.open[key] = event.target.open; } }, ...children);
 }
 
 const ICONS = {
@@ -424,7 +430,7 @@ function apiForm(agent) {
     h(
       "div",
       { class: "row" },
-      h("button", { class: "btn", disabled: ui.busy, onclick: () => run(`models-${agent}`, async () => { ui.models[agent] = await invoke("list_models", { agent, key: form.key || null }); if (!ui.models[agent].length) toast(t("مفيش موديلات متاحة.", "No models were listed.")); }) }, t("هات قائمة الموديلات", "Load models")),
+      h("button", { class: "btn", disabled: ui.busy, onclick: () => run(`models-${agent}`, async () => { ui.models[agent] = await invoke("list_models", { agent, key: form.key || null, endpoint: custom ? form.endpoint : null }); if (!ui.models[agent].length) toast(t("مفيش موديلات متاحة.", "No models were listed.")); }) }, t("هات قائمة الموديلات", "Load models")),
       h("button", { class: "btn primary", disabled: ui.busy, "data-testid": `save-${agent}`, onclick: () => run(`save-${agent}`, async () => { await save(); form.key = ""; form.oauth = false; await refresh(); toast(t("اتحفظ.", "Saved.")); }) }, t("احفظ", "Save")),
       h("button", { class: "btn", disabled: ui.busy, title: t("بيبعت طلب حقيقي ممكن يتحسب عليك.", "Sends one real request, which may be billed."), onclick: () => run(`test-${agent}`, async () => { await save(); await refresh(); const reply = await invoke("test_assistant", { agent }); toast(t(`الرد: ${reply}`, `Reply: ${reply}`)); }) }, t("احفظ وجرّب (طلب مدفوع)", "Save & test (paid request)"))
     ),
@@ -432,7 +438,7 @@ function apiForm(agent) {
       h(
         "div",
         { class: "stack" },
-        h("input", { type: "search", dir: "ltr", value: form.query, placeholder: t("دوّر على موديل", "Search models"), "aria-label": t("دوّر على موديل", "Search models"), oninput: (event) => { form.query = event.target.value; render(); document.querySelector('input[type="search"]')?.focus(); } }),
+        h("input", { type: "search", dir: "ltr", value: form.query, placeholder: t("دوّر على موديل", "Search models"), "aria-label": t("دوّر على موديل", "Search models"), "data-testid": `search-models-${agent}`, oninput: (event) => { form.query = event.target.value; render(); } }),
         h("select", { size: 6, dir: "ltr", "aria-label": t("اختار موديل", "Choose a model"), onchange: (event) => { form.model = event.target.value; render(); } }, shown.map((model) => h("option", { value: model, selected: model === form.model }, model))),
         agent === "openrouter" && h("p", { class: "muted small" }, t("بنعرض الموديلات النصية اللي بتدعم الأدوات بس. الطلبات بتستخدم رصيدك على OpenRouter ومن غير تحويل تلقائي لمزوّد تاني.", "Only text models that support tools are shown. Requests use your OpenRouter credits, with provider fallback turned off."))
       )
@@ -489,8 +495,13 @@ function onboarding() {
       t("جهّز الفريق", "Prepare team"),
       () =>
         run("save-team", async () => {
-          await invoke("save_team", { team: ui.draft, mode: ui.draft.advisor ? ui.mode : "off" });
-          await refresh();
+          // An edit stays a draft until step 5, so that Cancel really cancels.
+          if (editing) {
+            await invoke("check_team", { team: ui.draft });
+          } else {
+            await invoke("save_team", { team: ui.draft, mode: ui.draft.advisor ? ui.mode : "off" });
+            await refresh();
+          }
           ui.step = 2;
         }),
     ],
@@ -501,18 +512,24 @@ function onboarding() {
       () =>
         run("connect", async () => {
           ui.issue = null;
+          let stillConnected;
           try {
-            await invoke("connect_team");
+            stillConnected = await invoke("commit_team", { team: ui.draft, mode: ui.draft.advisor ? ui.mode : "off" });
           } catch (error) {
             ui.issue = String(error);
             return;
           }
           await invoke("finish_onboarding");
           await refresh();
+          ui.rulesForm = null;
           ui.draft = null;
           ui.step = 0;
           goto("home");
-          toast(t("الفريق اتوصّل. افتح محادثة جديدة في أجنتك.", "Team connected. Start a new chat in your agent."));
+          toast(
+            stillConnected
+              ? t(`الفريق اتوصّل، بس الربط القديم في ${label(stillConnected)} ما اتشالش. شيل fawaly_team من إعدادات MCP بتاعته.`, `Team connected, but the old connection in ${label(stillConnected)} could not be removed. Remove fawaly_team from its MCP settings.`)
+              : t("الفريق اتوصّل. افتح محادثة جديدة في أجنتك.", "Team connected. Start a new chat in your agent.")
+          );
         }),
       !team || !teamReady(),
     ],
@@ -603,7 +620,7 @@ async function loadLink() {
 
 function statusLabel(status) {
   return (
-    { running: t("شغّال", "Running"), completed: t("خلصت", "Completed"), needs_handoff: t("محتاج مراجعة الأساسي", "Needs primary review"), cancelled: t("اتلغت", "Cancelled"), reviewed: t("اتراجعت واتقبلت", "Reviewed and accepted"), changes_requested: t("محتاجة تعديل", "Changes requested"), rejected: t("مرفوضة بعد المراجعة", "Rejected after review") }[status] || t("ما اكتملتش", "Failed")
+    { running: t("شغّال", "Running"), completed: t("خلصت", "Completed"), needs_handoff: t("محتاج مراجعة الأساسي", "Needs primary review"), cancelled: t("اتلغت", "Cancelled"), reviewed: t("اتراجعت واتقبلت", "Reviewed and accepted"), changes_requested: t("محتاجة تعديل", "Changes requested"), rejected: t("مرفوضة بعد المراجعة", "Rejected after review"), interrupted: t("اتقطعت قبل ما تخلص", "Interrupted") }[status] || t("ما اكتملتش", "Failed")
   );
 }
 
@@ -621,12 +638,14 @@ function confinementLabel(value) {
 
 function jobCard(job) {
   const review = job.reviews?.[job.reviews.length - 1];
-  return h(
-    "details",
+  return disclosure(
+    `job-${job.id}`,
     { class: "card" },
+    false,
     h("summary", {}, job.title),
     h("div", { class: "row" }, h("span", { class: "muted small" }, label(job.worker)), h("span", { class: `badge ${job.status === "reviewed" ? "good" : ""}` }, statusLabel(job.status)), job.confinement && h("span", { class: "badge" }, confinementLabel(job.confinement))),
     job.gitChanges?.length > 0 && h("div", { class: "notice" }, t("اتغيّرت ملفات جوّه .git أثناء المهمة. راجعها.", "Files inside .git changed during this job. Please review them."), h("div", { class: "pre ltr", dir: "ltr" }, job.gitChanges.join("\n"))),
+    job.gitScanIncomplete && h("div", { class: "notice" }, t("المشروع كبير قوي ومقدرناش نفحص كل ملفات .git. راجع .git/config و.git/hooks بنفسك.", "This project is too large to check every .git file. Please inspect .git/config and .git/hooks yourself.")),
     job.result && h("div", { class: "pre" }, job.result),
     review && h("div", { class: "stack" }, h("strong", {}, `${t("مراجعة الأساسي", "Primary review")} · ${label(review.primary)}${review.score ? ` · ${review.score}/5` : ""}`), h("p", {}, review.summary), h("p", { class: "muted small" }, review.verification))
   );
@@ -733,7 +752,7 @@ function rules() {
       { class: "card" },
       h("h2", {}, t("ترتيب العمال", "Worker order")),
       h("label", { class: "field" }, t("مهلة العامل بالثواني (1–3600)", "Worker timeout in seconds (1–3600)"), h("input", { type: "number", min: 1, max: 3600, value: form.timeoutSeconds, oninput: (event) => { form.timeoutSeconds = Number(event.target.value); } })),
-      team?.workers.length ? kinds.map(([kind, text]) => h("details", {}, h("summary", {}, text), orderRows(kind))) : h("p", { class: "muted" }, t("مفيش عمال متعيّنين.", "No workers assigned."))
+      team?.workers.length ? kinds.map(([kind, text]) => disclosure(`rules-${kind}`, {}, false, h("summary", {}, text), orderRows(kind))) : h("p", { class: "muted" }, t("مفيش عمال متعيّنين.", "No workers assigned."))
     ),
     h(
       "div",
@@ -756,11 +775,12 @@ function advisorPage() {
     h("div", { class: "card" }, h("h2", {}, team?.advisor ? label(team.advisor) : t("مفيش مستشار", "No advisor")), h("p", { class: "muted" }, t("الأساسي بيستشير حسب سياستك من جوّه محادثتك. الاستشارات بتظهر هنا.", "Your primary consults according to your policy, from inside your chat. Consultations appear here."))),
     consults.length
       ? consults.map((record) =>
-          h(
-            "details",
+          disclosure(
+            `consult-${record.id}`,
             { class: "card" },
+            false,
             h("summary", {}, record.question),
-            h("div", { class: "row" }, h("span", { class: "muted small" }, record.provider), h("span", { class: "badge" }, record.decision ?? record.status)),
+            h("div", { class: "row" }, h("span", { class: "muted small" }, record.provider), h("span", { class: "badge" }, record.decision ?? record.status), record.confinement && h("span", { class: "badge" }, confinementLabel(record.confinement))),
             record.rounds.map((round) => h("div", { class: "pre" }, round.advice)),
             record.summary && h("p", {}, record.summary)
           )
@@ -778,7 +798,7 @@ function assistants() {
     h("div", { class: "row" }, h("button", { class: "btn", disabled: ui.busy, onclick: () => run("prepare", () => prepareServices(natives.filter((agent) => !service(agent).installed))) }, t("جهّز الخدمات الناقصة", "Prepare missing services"))),
     connectionList(natives),
     h("h2", {}, t("مساعدين عبر API أو محليين", "API and local assistants")),
-    apis.map((agent) => h("details", { class: "card", open: service(agent).configured }, h("summary", {}, label(agent)), apiForm(agent), service(agent).configured && h("button", { class: "btn danger", style: "align-self:flex-start", onclick: () => run("remove", async () => { await invoke("remove_assistant", { agent }); delete ui.apiForm[agent]; await refresh(); }) }, t("احذف الخدمة ومفتاحها", "Remove service and key")))),
+    apis.map((agent) => disclosure(`api-${agent}`, { class: "card" }, service(agent).configured, h("summary", {}, label(agent)), apiForm(agent), service(agent).configured && h("button", { class: "btn danger", style: "align-self:flex-start", onclick: () => run("remove", async () => { await invoke("remove_assistant", { agent }); delete ui.apiForm[agent]; await refresh(); }) }, t("احذف الخدمة ومفتاحها", "Remove service and key")))),
   ];
 }
 
@@ -793,7 +813,7 @@ async function loadSkills() {
 
 function skillStatus(status) {
   return (
-    { absent: [t("مش متثبت", "Not installed"), ""], installed: [t("متثبت", "Installed"), "good"], modified: [t("اتعدّل بعد التثبيت", "Changed since install"), "warn"], incomplete: [t("تثبيت ناقص", "Incomplete install"), "warn"], external: [t("موجود من مصدر تاني", "Already present from elsewhere"), "warn"], global: [t("متثبت لكل المشاريع", "Installed for all projects"), "good"] }[status] || [t("اختار مكان التثبيت", "Choose a destination"), ""]
+    { absent: [t("مش متثبت", "Not installed"), ""], installed: [t("متثبت", "Installed"), "good"], modified: [t("اتعدّل بعد التثبيت", "Changed since install"), "warn"], incomplete: [t("تثبيت ناقص", "Incomplete install"), "warn"], external: [t("موجود من مصدر تاني", "Already present from elsewhere"), "warn"], global: [t("موجودة في السكيلز العامة", "Detected in global skills"), ""] }[status] || [t("اختار مكان التثبيت", "Choose a destination"), ""]
   );
 }
 
@@ -842,10 +862,12 @@ function skillModal() {
       h("p", { class: "muted small" }, `${t("الكريدت", "Credit")}: ${plan.author} · ${plan.license}`),
       h("p", {}, plan.scope === "allProjects" ? t("هيتثبت لكل مشاريعك المحلية.", "This installs for all your local projects.") : h("code", { class: "ltr", dir: "ltr" }, plan.destination)),
       plan.warnings.length > 0 && h("div", { class: "notice" }, plan.warnings.map((warning) => h("p", {}, warning))),
-      h("details", {}, h("summary", {}, `${t("الملفات", "Files")} (${plan.writes.length})`), h("div", { class: "pre ltr", dir: "ltr" }, plan.writes.join("\n"))),
-      h("details", {}, h("summary", {}, t("معاينة", "Preview")), h("div", { class: "pre ltr", dir: "ltr" }, plan.preview)),
+      plan.requirements.length > 0 && h("div", { class: "stack" }, h("strong", {}, t("متطلبات التشغيل", "Requirements")), plan.requirements.map((requirement) => h("p", { class: "muted small", dir: "auto" }, requirement))),
+      disclosure("install-files", {}, false, h("summary", {}, `${t("الملفات", "Files")} (${plan.writes.length})`), h("div", { class: "pre ltr", dir: "ltr" }, plan.writes.join("\n"))),
+      disclosure("install-preview", {}, false, h("summary", {}, t("معاينة", "Preview")), h("div", { class: "pre ltr", dir: "ltr" }, plan.preview)),
       h("p", { class: "muted small" }, t("تعليماتك الحالية بتفضل زي ما هي، والجديد بيتضاف في قسم منفصل.", "Your existing instructions stay as they are; new text goes in a separate section.")),
-      h("div", { class: "row" }, h("button", { class: "btn primary", disabled: ui.busy, "data-testid": "confirm-install", onclick: () => run("install", async () => { await invoke("skills_install", { id: plan.id }); ui.modal = null; await loadSkills(); toast(t("اتثبت.", "Installed.")); }) }, t("ثبّت", "Install")), h("button", { class: "btn", onclick: () => { ui.modal = null; render(); } }, t("إلغاء", "Cancel")))
+      plan.warnings.length > 0 && h("label", { class: "check" }, h("input", { type: "checkbox", checked: plan.acknowledged, "data-testid": "acknowledge-install", onchange: (event) => { plan.acknowledged = event.target.checked; render(); } }), t("راجعت التداخلات ومتطلبات التشغيل", "I reviewed overlaps and execution requirements")),
+      h("div", { class: "row" }, h("button", { class: "btn primary", disabled: ui.busy || (plan.warnings.length > 0 && !plan.acknowledged), "data-testid": "confirm-install", onclick: () => run("install", async () => { await invoke("skills_install", { id: plan.id }); ui.modal = null; await loadSkills(); toast(t("اتثبت.", "Installed.")); }) }, t("ثبّت", "Install")), h("button", { class: "btn", onclick: () => { ui.modal = null; render(); } }, t("إلغاء", "Cancel")))
     )
   );
 }
@@ -861,13 +883,18 @@ async function loadDaily(force) {
 
 function dailyPage() {
   const data = ui.daily;
-  const reading = data?.reading ?? { saved: [], read: [] };
-  const articles = (data?.snapshot.articles ?? []).filter((article) => ui.dailyFilter === "all" || (ui.dailyFilter === "saved" ? reading.saved.includes(article.url) : article.topic === ui.dailyFilter));
+  const reading = data?.reading ?? { saved: [], read: [], bookmarks: [] };
+  const issues = data?.issues ?? {};
+  // Saved articles stay here after they leave the 14-day news window.
+  const articles = ui.dailyFilter === "saved" ? reading.bookmarks : (data?.snapshot.articles ?? []).filter((article) => ui.dailyFilter === "all" || article.topic === ui.dailyFilter);
   const topics = { models: t("النماذج والأبحاث", "Models & research"), coding: t("أدوات البرمجة", "Coding tools"), agents: t("الوكلاء والاستخدام العملي", "Agents & practice") };
   return [
     header(t("أخبار المطوّرين", "Developer Daily"), t("Fresh tools and agent news. Original sources, practical next steps.", "Fresh tools and agent news. Original sources, practical next steps."), "crew-daily-v2"),
     h("div", { class: "row between" }, segmented([["all", t("الكل", "All")], ...Object.entries(topics), ["saved", t("المحفوظ", "Saved")]], ui.dailyFilter, (value) => { ui.dailyFilter = value; render(); }), h("button", { class: "btn", disabled: ui.busy, onclick: () => run("daily", () => loadDaily(true)) }, t("حدّث", "Refresh"))),
     data?.snapshot.failures.length > 0 && h("div", { class: "notice" }, t("بعض المصادر مش متاحة دلوقتي.", "Some sources are unavailable right now.")),
+    issues.cache && h("div", { class: "notice" }, t("الأخبار المتخزنة ما اتقرتش، فجبنا نسخة جديدة.", "The saved news could not be read, so a fresh copy was fetched.")),
+    issues.save && h("div", { class: "notice" }, t("الأخبار دي ظاهرة بس ما اتحفظتش على الجهاز.", "These headlines could not be saved on this computer.")),
+    issues.reading && h("div", { class: "notice" }, t("قايمة المحفوظات ما اتقرتش، فالحفظ متوقف دلوقتي.", "Your saved list could not be read, so saving is off for now.")),
     !data && busyRow(t("لحظات…", "Working…")),
     data && articles.length === 0 && h("p", { class: "muted" }, t("No headlines to show", "No headlines to show")),
     articles.map((article) => {
@@ -880,8 +907,8 @@ function dailyPage() {
         h(
           "div",
           { class: "row" },
-          h("button", { class: "btn", onclick: () => { openLink(article.url); invoke("daily_mark", { article, read: true }).then((value) => { data.reading = value; render(); }).catch(report); } }, t("اقرأ المصدر", "Read source")),
-          h("button", { class: "btn", onclick: () => invoke("daily_mark", { article, saved: !saved }).then((value) => { data.reading = value; render(); }).catch(report) }, saved ? t("Saved for later", "Saved for later") : t("Save for later", "Save for later")),
+          h("button", { class: "btn", onclick: () => { openLink(article.url); if (!issues.reading) invoke("daily_mark", { article, read: true }).then((value) => { data.reading = value; render(); }).catch(report); } }, t("اقرأ المصدر", "Read source")),
+          h("button", { class: "btn", disabled: issues.reading, onclick: () => invoke("daily_mark", { article, saved: !saved }).then((value) => { data.reading = value; render(); }).catch(report) }, saved ? t("Saved for later", "Saved for later") : t("Save for later", "Save for later")),
           h("button", { class: "btn primary", onclick: async () => { const brief = await invoke("daily_brief", { article, arabic: ui.arabic }); toast((await copy(brief)) ? t("Brief copied", "Brief copied") : t("النسخ ما نجحش.", "Could not copy.")); } }, t("Prepare a team task", "Prepare a team task"))
         )
       );
@@ -894,7 +921,7 @@ function tasks() {
   const jobs = (ui.activity?.jobs ?? []).filter((job) => !query || `${job.title} ${job.result ?? ""}`.toLowerCase().includes(query));
   return [
     header(t("المهام والمراجعات", "Tasks & reviews"), t("Task results saved in this workshop.", "Task results saved in this workshop."), "crew-worklog"),
-    h("input", { type: "search", value: ui.search, placeholder: t("دوّر في المهام", "Search tasks"), "aria-label": t("دوّر في المهام", "Search tasks"), oninput: (event) => { ui.search = event.target.value; render(); document.querySelector('input[type="search"]')?.focus(); } }),
+    h("input", { type: "search", value: ui.search, placeholder: t("دوّر في المهام", "Search tasks"), "aria-label": t("دوّر في المهام", "Search tasks"), "data-testid": "search-tasks", oninput: (event) => { ui.search = event.target.value; render(); } }),
     jobs.length ? jobs.map(jobCard) : h("p", { class: "muted" }, ui.search ? t("No results match this search", "No results match this search") : t("The ledger is empty", "The ledger is empty")),
   ];
 }
@@ -954,7 +981,7 @@ function settings() {
       h("p", { class: "muted" }, t("Keys stay here", "Keys stay here")),
       h("button", { class: "btn danger", style: "align-self:flex-start", disabled: ui.busy, "data-testid": "remove-data", onclick: () => { ui.confirmRemove = true; render(); } }, t("افصل الفريق وامسح بياناتي من الجهاز", "Disconnect the team and remove my data")),
       ui.confirmRemove &&
-        h("div", { class: "notice" }, h("p", {}, t("هيتمسح ربط الفريق وسجل المهام ومفاتيحك وتسجيلات الدخول الخاصة بالتطبيق. مشاريعك مش هتتأثر. مش هتقدر ترجع في الخطوة دي.", "This removes the team connection, the task log, your keys and this app's sign-ins. Your projects are not touched. This cannot be undone.")), h("div", { class: "row" }, h("button", { class: "btn danger", "data-testid": "confirm-remove", onclick: () => run("remove", async () => { await invoke("remove_my_data"); ui.confirmRemove = false; await refresh(); ui.step = 0; ui.draft = null; toast(t("اتمسحت.", "Removed.")); }) }, t("امسح نهائيًا", "Remove permanently")), h("button", { class: "btn", onclick: () => { ui.confirmRemove = false; render(); } }, t("إلغاء", "Cancel"))))
+        h("div", { class: "notice" }, h("p", {}, t("هيتمسح ربط الفريق وسجل المهام ومفاتيحك وتسجيلات الدخول الخاصة بالتطبيق. مشاريعك مش هتتأثر. مش هتقدر ترجع في الخطوة دي.", "This removes the team connection, the task log, your keys and this app's sign-ins. Your projects are not touched. This cannot be undone.")), h("div", { class: "row" }, h("button", { class: "btn danger", "data-testid": "confirm-remove", onclick: () => run("remove", async () => { await invoke("remove_my_data"); ui.confirmRemove = false; ui.skillsDir = null; await refresh(); ui.step = 0; ui.draft = null; toast(t("اتمسحت.", "Removed.")); }) }, t("امسح نهائيًا", "Remove permanently")), h("button", { class: "btn", onclick: () => { ui.confirmRemove = false; render(); } }, t("إلغاء", "Cancel"))))
     ),
   ];
 }
@@ -966,6 +993,7 @@ function render() {
   const root = document.getElementById("app");
   const active = document.activeElement;
   const focusId = active?.dataset?.testid;
+  const caret = focusId ? active.selectionStart : null;
   const onboardingNeeded = ui.data.state.onboardingVersion == null || ui.page === "edit";
   let content;
   if (onboardingNeeded) {
@@ -991,7 +1019,11 @@ function render() {
     );
   }
   root.replaceChildren(content, ...(ui.modal ? [skillModal()] : []));
-  if (focusId) document.querySelector(`[data-testid="${focusId}"]`)?.focus();
+  if (focusId) {
+    const next = document.querySelector(`[data-testid="${focusId}"]`);
+    next?.focus();
+    if (caret != null) next?.setSelectionRange?.(caret, caret);
+  }
 }
 
 // A rendering bug must never leave a silent blank window.
@@ -1014,6 +1046,7 @@ async function start() {
     ui.browserUrl = event.payload;
     render();
   });
+  await listen("team-reconnected", () => loadLink());
   ui.mode = "important";
   if (ui.data.state.team) ui.draft = structuredClone(ui.data.state.team);
   if (ui.data.state.onboardingVersion != null) goto("home");

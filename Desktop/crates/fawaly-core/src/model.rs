@@ -278,6 +278,9 @@ pub struct TeamJob {
     pub confinement: Option<String>,
     #[serde(default)]
     pub git_changes: Vec<String>,
+    /// The project was too large to check every .git file.
+    #[serde(default)]
+    pub git_scan_incomplete: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -352,6 +355,10 @@ pub struct ConsultRecord {
     pub summary: Option<String>,
     pub created: DateTime<Utc>,
     pub updated: DateTime<Utc>,
+    /// What limited the advisor's latest round. Left out when absent, so a
+    /// record saved before this field still matches its stored text on update.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confinement: Option<String>,
 }
 
 pub const ADVICE_LIMIT: usize = 64 * 1024;

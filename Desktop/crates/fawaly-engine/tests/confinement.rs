@@ -4,9 +4,10 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::time::Duration;
 
 const ENGINE: &str = env!("CARGO_BIN_EXE_sudo-interns-engine");
-const SYSTEM: [&str; 5] = ["/usr", "/bin", "/lib", "/lib64", "/etc"];
+const SYSTEM: [&str; 6] = ["/usr", "/bin", "/lib", "/lib64", "/etc", "/proc"];
 
 fn landlock_works() -> bool {
     let works = Command::new(ENGINE).arg("confine-probe").status().unwrap().success();
@@ -30,7 +31,7 @@ fn sandbox() -> Sandbox {
     Sandbox { _base: base, allowed, outside }
 }
 
-fn run(sandbox: &Sandbox, script: &str) -> Output {
+fn confined(sandbox: &Sandbox, script: &str) -> Command {
     let mut command = Command::new(ENGINE);
     command.arg("confine");
     for path in SYSTEM.iter().filter(|path| Path::new(path).exists()) {
@@ -38,7 +39,57 @@ fn run(sandbox: &Sandbox, script: &str) -> Output {
     }
     command.arg("--write").arg(&sandbox.allowed).args(["--write", "/dev/null"]);
     command.arg("--").args(["/bin/sh", "-c", script]);
-    command.env("A", &sandbox.allowed).env("B", &sandbox.outside).output().unwrap()
+    command.env("A", &sandbox.allowed).env("B", &sandbox.outside);
+    command
+}
+
+fn run(sandbox: &Sandbox, script: &str) -> Output {
+    confined(sandbox, script).output().unwrap()
+}
+
+/// Starts a daemon in its own session, which a process-group kill cannot reach.
+const DAEMON: &str = r#"setsid /bin/sh -c 'echo $$ > "$A/pid.tmp"; mv "$A/pid.tmp" "$A/pid"; sleep 3; echo late > "$A/late"' >/dev/null 2>&1 &"#;
+const WAIT_FOR_DAEMON: &str = r#"while [ ! -s "$A/pid" ]; do sleep 0.05; done"#;
+
+fn assert_daemon_ended(sandbox: &Sandbox) {
+    let pid = std::fs::read_to_string(sandbox.allowed.join("pid")).unwrap();
+    assert!(!Path::new(&format!("/proc/{}", pid.trim())).exists(), "the daemon must be gone when the helper exits");
+    std::thread::sleep(Duration::from_secs(4));
+    assert!(!sandbox.allowed.join("late").exists(), "the daemon must not write after the job");
+}
+
+#[test]
+fn a_setsid_child_is_dead_when_the_worker_exits() {
+    if !landlock_works() {
+        return;
+    }
+    let sandbox = sandbox();
+    let output = run(&sandbox, &format!("{DAEMON}\n{WAIT_FOR_DAEMON}"));
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert_daemon_ended(&sandbox);
+}
+
+#[test]
+fn the_helper_ends_a_setsid_child_when_it_is_terminated() {
+    if !landlock_works() {
+        return;
+    }
+    let sandbox = sandbox();
+    let mut helper = confined(&sandbox, &format!("{DAEMON}\n{WAIT_FOR_DAEMON}\nsleep 30")).spawn().unwrap();
+    while !sandbox.allowed.join("pid").exists() {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(Command::new("kill").args(["-TERM", &helper.id().to_string()]).status().unwrap().success());
+    assert_eq!(helper.wait().unwrap().code(), Some(143));
+    assert_daemon_ended(&sandbox);
+}
+
+#[test]
+fn the_worker_exit_status_is_passed_on() {
+    if !landlock_works() {
+        return;
+    }
+    assert_eq!(run(&sandbox(), "exit 7").status.code(), Some(7));
 }
 
 #[test]

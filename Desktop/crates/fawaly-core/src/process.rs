@@ -8,8 +8,45 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// Set when the MCP client disconnects so running workers are not orphaned.
+/// Set when the MCP client disconnects or the engine is told to shut down, so
+/// running workers are not orphaned.
 pub static CANCELLED: AtomicBool = AtomicBool::new(false);
+
+/// Makes a shutdown request drain the engine the same way closed input does.
+#[cfg(unix)]
+pub fn stop_on_shutdown_signals() {
+    const SIGINT: i32 = 2;
+    const SIGTERM: i32 = 15;
+    unsafe extern "C" {
+        safe fn signal(signum: i32, handler: usize) -> usize;
+    }
+    extern "C" fn on_signal(_signal: i32) {
+        CANCELLED.store(true, Ordering::SeqCst);
+    }
+    signal(SIGINT, on_signal as extern "C" fn(i32) as usize);
+    signal(SIGTERM, on_signal as extern "C" fn(i32) as usize);
+}
+
+/// Makes a shutdown request drain the engine the same way closed input does.
+#[cfg(windows)]
+pub fn stop_on_shutdown_signals() {
+    use windows_sys::Win32::System::Console::SetConsoleCtrlHandler;
+    const CTRL_CLOSE_EVENT: u32 = 2;
+    const CTRL_LOGOFF_EVENT: u32 = 5;
+    const CTRL_SHUTDOWN_EVENT: u32 = 6;
+    unsafe extern "system" fn on_control(event: u32) -> i32 {
+        CANCELLED.store(true, Ordering::SeqCst);
+        // Windows ends the process once this returns for these events, so wait
+        // inside the time it allows while the engine saves its jobs and exits.
+        if matches!(event, CTRL_CLOSE_EVENT | CTRL_LOGOFF_EVENT | CTRL_SHUTDOWN_EVENT) {
+            std::thread::sleep(Duration::from_secs(4));
+        }
+        1
+    }
+    unsafe {
+        SetConsoleCtrlHandler(Some(on_control), 1);
+    }
+}
 
 pub const OUTPUT_LIMIT: u64 = 1_048_576;
 const LOGIN_OUTPUT_LIMIT: usize = 131_072;
@@ -68,16 +105,23 @@ mod group {
 mod group {
     pub struct Group(i32);
 
+    unsafe extern "C" {
+        safe fn kill(pid: i32, signal: i32) -> i32;
+    }
+
     impl Group {
         pub fn attach(child: &std::process::Child) -> Option<Self> {
             Some(Self(child.id() as i32))
         }
 
         pub fn kill(&self) {
-            unsafe extern "C" {
-                safe fn kill(pid: i32, signal: i32) -> i32;
-            }
             kill(-self.0, 9);
+        }
+
+        /// Gives the Linux confine helper the chance to end what left the group.
+        #[cfg(target_os = "linux")]
+        pub fn terminate(&self) {
+            kill(-self.0, 15);
         }
     }
 }
@@ -89,6 +133,31 @@ fn prepare(command: &mut Command) {
     {
         use std::os::unix::process::CommandExt;
         command.process_group(0);
+    }
+    // The kernel ends the worker if the engine dies with no chance to clean up.
+    // This follows the spawning thread, which stays in the supervision loop until
+    // the worker has ended. The confine helper replaces it with SIGTERM.
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::process::CommandExt;
+        const PR_SET_PDEATHSIG: i32 = 1;
+        const SIGKILL: u64 = 9;
+        const ESRCH: i32 = 3;
+        unsafe extern "C" {
+            fn prctl(option: i32, ...) -> i32;
+            safe fn getppid() -> i32;
+        }
+        let parent = std::process::id() as i32;
+        // Only async-signal-safe calls. The parent check covers an engine that
+        // died before the signal was armed.
+        unsafe {
+            command.pre_exec(move || {
+                if prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || getppid() != parent {
+                    return Err(std::io::Error::from_raw_os_error(ESRCH));
+                }
+                Ok(())
+            });
+        }
     }
     #[cfg(windows)]
     {
@@ -102,10 +171,37 @@ struct Supervised {
     child: Child,
     group: Group,
     reaped: bool,
+    ends_gently: bool,
+}
+
+impl Supervised {
+    /// SIGKILL cannot be caught, so the confine helper is asked first and
+    /// allowed to end any child that called setsid.
+    #[cfg(target_os = "linux")]
+    fn end_gently(&mut self) {
+        self.group.terminate();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            match self.child.try_wait() {
+                Ok(Some(_)) => {
+                    self.reaped = true;
+                    return;
+                }
+                Ok(None) => std::thread::sleep(Duration::from_millis(20)),
+                Err(_) => return,
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn end_gently(&mut self) {}
 }
 
 impl Drop for Supervised {
     fn drop(&mut self) {
+        if self.ends_gently && !self.reaped {
+            self.end_gently();
+        }
         self.group.kill();
         if !self.reaped {
             let _ = self.child.kill();
@@ -114,9 +210,9 @@ impl Drop for Supervised {
     }
 }
 
-fn supervise(mut child: Child) -> Result<Supervised> {
+fn supervise(mut child: Child, ends_gently: bool) -> Result<Supervised> {
     match Group::attach(&child) {
-        Some(group) => Ok(Supervised { child, group, reaped: false }),
+        Some(group) => Ok(Supervised { child, group, reaped: false, ends_gently }),
         None => {
             let _ = child.kill();
             let _ = child.wait();
@@ -177,7 +273,7 @@ pub fn run_worker(spec: &WorkerSpec) -> Result<Vec<u8>> {
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
     prepare(&mut command);
-    let mut process = supervise(command.spawn().map_err(launch)?)?;
+    let mut process = supervise(command.spawn().map_err(launch)?, true)?;
     let deadline = Instant::now() + Duration::from_secs(spec.timeout.clamp(1, 3600));
     let status = loop {
         match process.child.try_wait() {
@@ -209,6 +305,12 @@ pub fn run_worker(spec: &WorkerSpec) -> Result<Vec<u8>> {
     }
     let output = bounded_read(&stdout_path);
     if !status.success() {
+        // The engine's own stops return above, so something else killed it, and
+        // whatever it would have cleaned up on the way out is still there.
+        #[cfg(unix)]
+        if std::os::unix::process::ExitStatusExt::signal(&status) == Some(9) {
+            return Err(Error::invalid("The worker was killed before it finished, and processes it started may still be running. Review the workspace and .git, and check again before trusting them."));
+        }
         let detail = String::from_utf8_lossy(&bounded_read(&stderr_path)).to_lowercase();
         if detail.contains("landlock") && detail.contains("sudo interns") {
             return Err(Error::invalid("The worker file boundary could not be applied. The request was stopped."));
@@ -268,7 +370,7 @@ pub fn run_login(command: &LoginCommand, timeout: Duration, cancel: &AtomicBool,
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     prepare(&mut process);
-    let mut supervised = supervise(process.spawn().map_err(launch)?)?;
+    let mut supervised = supervise(process.spawn().map_err(launch)?, false)?;
     if let (Some(input), Some(mut stdin)) = (command.input.clone(), supervised.child.stdin.take()) {
         std::thread::spawn(move || {
             let _ = stdin.write_all(input.as_bytes());
@@ -399,6 +501,45 @@ mod tests {
         assert!(run_worker(&spec).unwrap_err().to_string().contains("time limit"));
         std::thread::sleep(Duration::from_secs(3));
         assert!(!marker.exists(), "child in the worker's process group must be killed");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_worker_killed_outright_warns_about_what_it_left_running() {
+        let directory = tempfile::tempdir().unwrap();
+        let spec = WorkerSpec {
+            program: "/bin/sh".into(),
+            arguments: vec!["-c".into(), "kill -9 $$".into()],
+            environment: vec![],
+            directory: directory.path().to_path_buf(),
+            prompt: "x".into(),
+            timeout: 30,
+            stop_file: None,
+        };
+        assert!(run_worker(&spec).unwrap_err().to_string().contains("may still be running"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_worker_does_not_outlive_the_thread_supervising_it() {
+        use std::os::unix::process::ExitStatusExt;
+        let mut child = std::thread::spawn(|| {
+            let mut command = Command::new("/bin/sleep");
+            command.arg("30");
+            prepare(&mut command);
+            command.spawn().unwrap()
+        })
+        .join()
+        .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let status = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break status;
+            }
+            assert!(Instant::now() < deadline, "the parent-death signal never arrived");
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        assert_eq!(status.signal(), Some(9));
     }
 
     #[cfg(unix)]

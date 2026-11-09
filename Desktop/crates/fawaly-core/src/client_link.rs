@@ -1,4 +1,5 @@
 use crate::engine::{same_path, Engine};
+use crate::installer::retry_while_denied;
 use crate::model::Agent;
 use crate::process::{self, LoginCommand, LoginReply};
 use crate::{paths, Error, Result};
@@ -60,16 +61,41 @@ pub fn prepare_launcher(engine: &Engine, source: &Path) -> Result<PathBuf> {
     if file_digest(source) == file_digest(&target) && target.is_file() {
         return Ok(target);
     }
-    let temporary = folder.join(format!(".new-{}", uuid::Uuid::new_v4()));
-    std::fs::copy(source, &temporary)?;
-    paths::set_executable(&temporary)?;
-    if target.exists() {
-        let parked = folder.join(format!(".old-{}", uuid::Uuid::new_v4()));
-        std::fs::rename(&target, &parked)?;
-        let _ = std::fs::remove_file(&parked);
-    }
-    std::fs::rename(&temporary, &target)?;
+    install_launcher(source, &target, cfg!(windows), |from, to| std::fs::rename(from, to), Duration::from_millis(250))?;
     Ok(target)
+}
+
+/// The old launcher is deleted only once the new one is in place.
+fn swap_launcher(temporary: &Path, target: &Path, parked: &Path, rename: &impl Fn(&Path, &Path) -> std::io::Result<()>, pause: Duration) -> std::io::Result<()> {
+    retry_while_denied(|| rename(target, parked), pause)?;
+    if let Err(error) = retry_while_denied(|| rename(temporary, target), pause) {
+        let _ = retry_while_denied(|| rename(parked, target), pause);
+        return Err(error);
+    }
+    let _ = std::fs::remove_file(parked);
+    Ok(())
+}
+
+/// `park_first` is for Windows, where a running executable cannot be overwritten.
+/// Elsewhere one rename replaces the launcher, so it is never missing.
+fn install_launcher(source: &Path, target: &Path, park_first: bool, rename: impl Fn(&Path, &Path) -> std::io::Result<()>, pause: Duration) -> Result<()> {
+    let folder = target.parent().ok_or_else(|| Error::invalid("Invalid launcher folder."))?;
+    let temporary = folder.join(format!(".new-{}", uuid::Uuid::new_v4()));
+    let installed = (|| -> Result<()> {
+        std::fs::copy(source, &temporary)?;
+        paths::set_executable(&temporary)?;
+        if park_first && target.exists() {
+            let parked = folder.join(format!(".old-{}", uuid::Uuid::new_v4()));
+            swap_launcher(&temporary, target, &parked, &rename, pause)?;
+        } else {
+            retry_while_denied(|| rename(&temporary, target), pause)?;
+        }
+        Ok(())
+    })();
+    if installed.is_err() {
+        let _ = retry_while_denied(|| std::fs::remove_file(&temporary), pause);
+    }
+    installed
 }
 
 impl ClientLink {
@@ -360,6 +386,76 @@ mod tests {
         std::fs::write(&fixture.source, "engine-v2").unwrap();
         prepare_launcher(&fixture.link.engine, &fixture.source).unwrap();
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "engine-v2");
+    }
+
+    fn launcher_folder() -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let root = tempfile::tempdir().unwrap();
+        let folder = root.path().join("bin");
+        std::fs::create_dir_all(&folder).unwrap();
+        let source = root.path().join("new-engine");
+        std::fs::write(&source, "new").unwrap();
+        let target = folder.join("engine");
+        std::fs::write(&target, "old").unwrap();
+        (root, source, target)
+    }
+
+    fn only_launcher_remains(target: &Path, contents: &str) {
+        let names: Vec<String> = std::fs::read_dir(target.parent().unwrap()).unwrap().map(|entry| entry.unwrap().file_name().to_string_lossy().to_string()).collect();
+        assert_eq!(names, ["engine"]);
+        assert_eq!(std::fs::read_to_string(target).unwrap(), contents);
+    }
+
+    fn denied() -> std::io::Error {
+        std::io::Error::from(std::io::ErrorKind::PermissionDenied)
+    }
+
+    fn is_new_copy(path: &Path) -> bool {
+        path.file_name().unwrap().to_string_lossy().starts_with(".new-")
+    }
+
+    #[test]
+    fn a_launcher_that_stays_locked_is_rolled_back() {
+        let (_root, source, target) = launcher_folder();
+        let outcome = install_launcher(&source, &target, true, |from, to| if is_new_copy(from) { Err(denied()) } else { std::fs::rename(from, to) }, Duration::ZERO);
+        assert!(outcome.is_err());
+        only_launcher_remains(&target, "old");
+    }
+
+    #[test]
+    fn a_briefly_locked_launcher_is_retried_and_the_old_copy_removed() {
+        let (_root, source, target) = launcher_folder();
+        let refusals = std::cell::Cell::new(2);
+        let rename = |from: &Path, to: &Path| {
+            if is_new_copy(from) && refusals.get() > 0 {
+                refusals.set(refusals.get() - 1);
+                return Err(denied());
+            }
+            std::fs::rename(from, to)
+        };
+        install_launcher(&source, &target, true, rename, Duration::ZERO).unwrap();
+        assert_eq!(refusals.get(), 0);
+        only_launcher_remains(&target, "new");
+    }
+
+    #[test]
+    fn a_launcher_that_cannot_be_moved_aside_is_left_in_place() {
+        let (_root, source, target) = launcher_folder();
+        let outcome = install_launcher(&source, &target, true, |from, to| if from.file_name().unwrap() == "engine" { Err(denied()) } else { std::fs::rename(from, to) }, Duration::ZERO);
+        assert!(outcome.is_err());
+        only_launcher_remains(&target, "old");
+    }
+
+    #[test]
+    fn without_parking_one_rename_replaces_the_launcher() {
+        let (_root, source, target) = launcher_folder();
+        let destinations = Mutex::new(Vec::new());
+        let rename = |from: &Path, to: &Path| {
+            destinations.lock().unwrap().push(to.to_path_buf());
+            std::fs::rename(from, to)
+        };
+        install_launcher(&source, &target, false, rename, Duration::ZERO).unwrap();
+        assert_eq!(*destinations.lock().unwrap(), [target.clone()]);
+        only_launcher_remains(&target, "new");
     }
 
     #[test]

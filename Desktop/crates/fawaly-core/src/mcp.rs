@@ -1,17 +1,25 @@
 use crate::bridge::{Bridge, DelegateRequest};
-use crate::model::{ConsultDecision, ConsultReason, ReviewDecision};
+use crate::log::TeamJobLog;
+use crate::model::{ConsultDecision, ConsultReason, ReviewDecision, TASK_KINDS};
 use crate::store::WorkshopStore;
 use crate::{Error, Result};
 use serde_json::{json, Map, Value};
+use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::{sync_channel, RecvTimeoutError};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 const FRAME_LIMIT: usize = 512 * 1024;
 const CONCURRENCY: usize = 8;
+/// Time for a stopped native worker to end and its .git scan to be saved. A
+/// model request already in flight cannot be interrupted and is not waited for.
+const DRAIN_LIMIT: Duration = Duration::from_secs(5);
 const PROTOCOLS: [&str; 4] = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
-const INSTRUCTIONS: &str = "Fawaly manages your team. For a nontrivial user task, proactively read roster_get and use the configured team without requiring the user to direct each step. Use the saved delegation timeout and ordered workers for the task kind (general, code, research, review); no implicit paid fallback. You remain the primary and own the plan, integration, verification, and final decision. Follow advisor.mode: important means consult the assigned advisor before committing to a plan or important decision; on_request means consult only when the user requests advice; off means do not consult. Send relevant user-authorized context with a concise proposed plan and record your decision using consult_decide. Delegate a suitable bounded implementation or investigation to a configured worker when available; send a precise deliverable, allowed files, constraints, and acceptance checks. Supply a short user-facing title in the roster language so the workshop shows a readable task name. Do not delegate the whole task or your final review. A cwd permits edits only in the project the user approved in Fawaly. After the worker returns, independently inspect actual changed files and run appropriate verification, repair findings, then call review with the jobId, decision, your own observed evidence, and optional score. A worker report is a claim, not proof. Never claim a review you did not perform. Use changes_requested or rejected when checks fail. Keep working until the user's goal is complete. Text-only advice requires no workspace access; workers cannot delegate again. If a delegate result lists gitChanges, inspect them before accepting.";
+const INSTRUCTIONS: &str = "Fawaly manages your team. For a nontrivial user task, proactively read roster_get and use the configured team without requiring the user to direct each step. Use the saved delegation timeout and ordered workers for the task kind (general, code, research, review); no implicit paid fallback. You remain the primary and own the plan, integration, verification, and final decision. Follow advisor.mode: important means consult the assigned advisor before committing to a plan or important decision; on_request means consult only when the user requests advice; off means do not consult. Send relevant user-authorized context with a concise proposed plan and record your decision using consult_decide. Delegate a suitable bounded implementation or investigation to a configured worker when available; send a precise deliverable, allowed files, constraints, and acceptance checks. Supply a short user-facing title in the roster language so the workshop shows a readable task name. Do not delegate the whole task or your final review. A cwd permits edits only in the project the user approved in Fawaly. After the worker returns, independently inspect actual changed files and run appropriate verification, repair findings, then call review with the jobId, decision, your own observed evidence, and optional score. A worker report is a claim, not proof. Never claim a review you did not perform. Use changes_requested or rejected when checks fail. Keep working until the user's goal is complete. Text-only advice requires no workspace access; workers cannot delegate again. If a delegate result lists gitChanges, inspect them before accepting. If gitScanIncomplete is true, the project was too large to check every .git file, so inspect .git/config and .git/hooks yourself.";
 
 fn rpc_error(id: Value, code: i64, message: &str) -> Value {
     json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}})
@@ -25,8 +33,14 @@ fn tool(name: &str, description: &str, fields: &[(&str, &str)], required: &[&str
             property["description"] = json!("Duration from 1 second to 1 hour, e.g. 90s or 15m. A numeric string is seconds. Omit to use the saved worker timeout.");
             property["examples"] = json!(["90s", "15m", "900"]);
         }
+        if *key == "kind" && name == "delegate" {
+            property["enum"] = json!(TASK_KINDS);
+        }
         if *key == "reason" && name == "consult" {
             property["enum"] = json!(ConsultReason::NAMES);
+        }
+        if *key == "context" && name == "consult" {
+            property["description"] = json!("Up to 64 KB.");
         }
         if *key == "decision" && name == "review" {
             property["enum"] = json!(["accepted", "changes_requested", "rejected"]);
@@ -108,17 +122,104 @@ fn encode<T: serde::Serialize>(value: T) -> Result<Value> {
     Ok(serde_json::to_value(value)?)
 }
 
+enum Incoming {
+    Line(Vec<u8>),
+    Oversized,
+    Closed,
+}
+
+fn discard_line(input: &mut impl BufRead) -> std::io::Result<()> {
+    loop {
+        let available = input.fill_buf()?;
+        if available.is_empty() {
+            return Ok(());
+        }
+        if let Some(index) = available.iter().position(|byte| *byte == b'\n') {
+            input.consume(index + 1);
+            return Ok(());
+        }
+        let length = available.len();
+        input.consume(length);
+    }
+}
+
+/// Reads one line without ever holding more than the frame limit in memory.
+fn read_frame(input: &mut impl BufRead) -> Incoming {
+    let mut frame = Vec::new();
+    match input.by_ref().take(FRAME_LIMIT as u64 + 1).read_until(b'\n', &mut frame) {
+        Ok(0) | Err(_) => return Incoming::Closed,
+        Ok(_) => {}
+    }
+    if frame.len() <= FRAME_LIMIT {
+        return Incoming::Line(frame);
+    }
+    if frame.last() != Some(&b'\n') && discard_line(input).is_err() {
+        return Incoming::Closed;
+    }
+    Incoming::Oversized
+}
+
+/// How far a tool call has got, so a client's cancellation can find its job.
+enum Call {
+    Starting,
+    Running(Uuid),
+    CancelledEarly,
+}
+
 #[derive(Clone)]
 pub struct Server {
     bridge: Arc<Bridge>,
+    calls: Arc<Mutex<HashMap<String, Call>>>,
 }
 
 impl Server {
     pub fn new(bridge: Bridge) -> Self {
-        Self { bridge: Arc::new(bridge) }
+        Self { bridge: Arc::new(bridge), calls: Arc::new(Mutex::new(HashMap::new())) }
     }
 
-    fn call_tool(&self, name: &str, args: &Map<String, Value>) -> Result<Value> {
+    fn stop_job(&self, job: Uuid) {
+        if let Some(client) = self.bridge.client {
+            let _ = self.bridge.engine.request_stop(job, client);
+        }
+    }
+
+    fn job_started(&self, request: &str, job: Uuid) {
+        let cancelled = {
+            let mut calls = self.calls.lock().unwrap();
+            match calls.get_mut(request) {
+                Some(call @ Call::Starting) => {
+                    *call = Call::Running(job);
+                    false
+                }
+                Some(Call::CancelledEarly) => true,
+                _ => false,
+            }
+        };
+        if cancelled {
+            self.stop_job(job);
+        }
+    }
+
+    /// Only calls made in this session are in the map, so a client cannot stop
+    /// another session's work this way.
+    fn cancel_call(&self, request: &Value) {
+        let job = {
+            let mut calls = self.calls.lock().unwrap();
+            match calls.get_mut(&request.to_string()) {
+                Some(Call::Running(job)) => Some(*job),
+                Some(call @ Call::Starting) => {
+                    *call = Call::CancelledEarly;
+                    None
+                }
+                _ => None,
+            }
+        };
+        if let Some(job) = job {
+            self.stop_job(job);
+        }
+    }
+
+    fn call_tool(&self, name: &str, args: &Map<String, Value>, request: &str) -> Result<Value> {
         let spec = tools().iter().find(|spec| spec["name"] == name).ok_or_else(|| Error::invalid("Unknown Fawaly tool."))?;
         let fields = spec["inputSchema"]["properties"].as_object().cloned().unwrap_or_default();
         for (key, value) in args {
@@ -149,7 +250,8 @@ impl Server {
             "delegate" => {
                 let brief = text("brief").filter(|brief| !brief.trim().is_empty() && brief.len() <= 120 * 1024).ok_or_else(|| Error::invalid("Enter a brief of up to 120 KB."))?;
                 let timeout = text("timeout").map(parse_seconds).transpose()?;
-                encode(self.bridge.delegate(DelegateRequest { brief, cwd: text("cwd"), provider: text("provider"), timeout, kind: text("kind"), title: text("title") })?)
+                let delegation = DelegateRequest { brief, cwd: text("cwd"), provider: text("provider"), timeout, kind: text("kind"), title: text("title") };
+                encode(self.bridge.delegate_tracked(delegation, &|job| self.job_started(request, job))?)
             }
             "consult" => {
                 let reason = ConsultReason::parse(text("reason").unwrap_or("user_request")).ok_or_else(|| Error::invalid("Use a question and a valid consultation reason."))?;
@@ -201,6 +303,12 @@ impl Server {
         let (true, Some(method)) = (request.get("jsonrpc").and_then(Value::as_str) == Some("2.0"), method) else {
             return Some(rpc_error(Value::Null, -32600, "Invalid request"));
         };
+        if method == "notifications/cancelled" && !request.contains_key("id") {
+            if let Some(target) = request.get("params").and_then(|params| params.get("requestId")) {
+                self.cancel_call(target);
+            }
+            return None;
+        }
         let id = request.get("id")?.clone();
         if !(id.is_string() || id.is_number()) {
             return Some(rpc_error(Value::Null, -32600, "Invalid request ID"));
@@ -228,7 +336,7 @@ impl Server {
                     Some(Value::Object(arguments)) => arguments,
                     Some(_) => return Some(rpc_error(id, -32602, "Tool arguments must be an object")),
                 };
-                match self.call_tool(name, arguments) {
+                match self.call_tool(name, arguments, &id.to_string()) {
                     Ok(value) => json!({"isError":false,"content":[{"type":"text","text":value.to_string()}],"structuredContent":value}),
                     Err(error) => json!({"isError":true,"content":[{"type":"text","text":error.to_string()}]}),
                 }
@@ -239,8 +347,9 @@ impl Server {
     }
 
     /// Tool calls run on their own threads, so status and stop stay usable
-    /// during a long delegation. When input closes, running workers are stopped.
-    pub fn serve(&self, input: impl BufRead, output: impl Write + Send + 'static) {
+    /// during a long delegation. When input closes or a shutdown is requested,
+    /// running workers are stopped.
+    pub fn serve(&self, input: impl BufRead + Send + 'static, output: impl Write + Send + 'static) {
         fn write<W: Write>(output: &Mutex<W>, value: &Value) {
             let mut sink = output.lock().unwrap();
             let _ = writeln!(sink, "{value}");
@@ -250,16 +359,28 @@ impl Server {
         let slots = Arc::new(AtomicUsize::new(0));
         let mut initialized = false;
         let mut handles = Vec::new();
-        let mut input = input;
-        loop {
-            let mut frame = Vec::new();
-            match (&mut input).take(FRAME_LIMIT as u64 + 1).read_until(b'\n', &mut frame) {
-                Ok(0) | Err(_) => break,
-                Ok(_) => {}
+        // A blocked read cannot notice a shutdown request, so it gets its own thread.
+        let (frames, incoming) = sync_channel(CONCURRENCY);
+        std::thread::spawn(move || {
+            let mut input = input;
+            loop {
+                let frame = read_frame(&mut input);
+                let closed = matches!(frame, Incoming::Closed);
+                if frames.send(frame).is_err() || closed {
+                    return;
+                }
             }
-            if frame.len() > FRAME_LIMIT {
-                break;
-            }
+        });
+        while !crate::process::CANCELLED.load(Ordering::SeqCst) {
+            let mut frame = match incoming.recv_timeout(Duration::from_millis(50)) {
+                Ok(Incoming::Line(frame)) => frame,
+                Ok(Incoming::Oversized) => {
+                    write(&output, &rpc_error(Value::Null, -32700, "Message too large. Send at most 512 KB, with up to 64 KB of consult context."));
+                    continue;
+                }
+                Ok(Incoming::Closed) | Err(RecvTimeoutError::Disconnected) => break,
+                Err(RecvTimeoutError::Timeout) => continue,
+            };
             while frame.last().is_some_and(|byte| *byte == b'\n' || *byte == b'\r') {
                 frame.pop();
             }
@@ -275,10 +396,15 @@ impl Server {
                     write(&output, &rpc_error(id.unwrap_or(Value::Null), -32000, "Too many concurrent team requests. Please retry."));
                     continue;
                 }
+                // Registered before the thread starts, so an immediate cancellation is seen.
+                let key = id.unwrap_or(Value::Null).to_string();
+                self.calls.lock().unwrap().insert(key.clone(), Call::Starting);
                 let (server, output, slots) = (self.clone(), output.clone(), slots.clone());
                 handles.push(std::thread::spawn(move || {
                     let mut ready = true;
-                    if let Some(response) = server.handle(&frame, &mut ready) {
+                    let response = server.handle(&frame, &mut ready);
+                    server.calls.lock().unwrap().remove(&key);
+                    if let Some(response) = response {
                         write(&output, &response);
                     }
                     slots.fetch_sub(1, Ordering::SeqCst);
@@ -288,8 +414,25 @@ impl Server {
             }
         }
         crate::process::CANCELLED.store(true, Ordering::SeqCst);
-        for handle in handles {
-            let _ = handle.join();
+        self.drain(&handles);
+    }
+
+    /// Gives running calls a bounded time to finish. A call still blocked after
+    /// that is abandoned with the process, so its job is closed here.
+    fn drain(&self, handles: &[JoinHandle<()>]) {
+        let finished = || handles.iter().all(JoinHandle::is_finished);
+        let deadline = Instant::now() + DRAIN_LIMIT;
+        while !finished() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        if finished() {
+            return;
+        }
+        let log = TeamJobLog::new(&self.bridge.engine.root);
+        for call in self.calls.lock().unwrap().values() {
+            if let Call::Running(job) = call {
+                let _ = log.mark_interrupted(*job);
+            }
         }
     }
 }
@@ -340,6 +483,96 @@ mod tests {
         assert_eq!(reply["result"]["isError"], true);
         let reply = call(&server, json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"consult","arguments":{"question":"q","reason":"whim"}}}), &mut initialized);
         assert!(reply["result"]["content"][0]["text"].as_str().unwrap().contains("Use one of these values"));
+    }
+
+    #[test]
+    fn task_kinds_are_limited_in_the_schema_and_at_the_call() {
+        let (_root, server) = server();
+        let delegate = tools().iter().find(|tool| tool["name"] == "delegate").unwrap();
+        assert_eq!(delegate["inputSchema"]["properties"]["kind"]["enum"], json!(TASK_KINDS));
+        let mut initialized = true;
+        let reply = call(&server, json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"delegate","arguments":{"brief":"b","kind":"bugfix"}}}), &mut initialized);
+        assert!(reply["result"]["content"][0]["text"].as_str().unwrap().contains("Use one of these values for kind"));
+    }
+
+    #[test]
+    fn an_oversized_line_is_dropped_and_the_next_one_is_read() {
+        let mut data = vec![b'x'; FRAME_LIMIT + 4096];
+        data.extend_from_slice(b"\n{\"next\":1}\n");
+        let mut input = std::io::BufReader::with_capacity(1024, std::io::Cursor::new(data));
+        assert!(matches!(read_frame(&mut input), Incoming::Oversized));
+        assert!(matches!(read_frame(&mut input), Incoming::Line(line) if line == b"{\"next\":1}\n"));
+        assert!(matches!(read_frame(&mut input), Incoming::Closed));
+    }
+
+    #[test]
+    fn the_frame_limit_counts_the_newline() {
+        let mut data = vec![b'x'; FRAME_LIMIT];
+        data.push(b'\n');
+        data.extend_from_slice(b"y\n");
+        let mut input = std::io::Cursor::new(data);
+        assert!(matches!(read_frame(&mut input), Incoming::Oversized), "the newline is the byte over the limit");
+        assert!(matches!(read_frame(&mut input), Incoming::Line(line) if line == b"y\n"), "and nothing after it is lost");
+        let mut data = vec![b'x'; FRAME_LIMIT - 1];
+        data.push(b'\n');
+        assert!(matches!(read_frame(&mut std::io::Cursor::new(data)), Incoming::Line(line) if line.len() == FRAME_LIMIT));
+    }
+
+    /// A worker that runs until its job's stop file appears, as native workers do.
+    fn waiting_server() -> (tempfile::TempDir, Server) {
+        use crate::confine::Confinement;
+        use crate::model::{Agent, AdvisorSettings, TeamSettings, WorkshopState};
+        use crate::native::WorkerOutcome;
+        let root = tempfile::tempdir().unwrap();
+        let engine = Engine::with(root.path().join("d"), root.path().join("h"), Arc::new(MemorySecrets::default()));
+        let team = TeamSettings { primary: Agent::Claude, advisor: None, workers: vec![Agent::Kimi] };
+        WorkshopStore::new(&engine.root).save(&WorkshopState { team: Some(team), advisors: AdvisorSettings::default(), ..Default::default() }).unwrap();
+        let worker: crate::bridge::WorkerFn = Arc::new(move |_, _, _, _, stop, _| {
+            let stop = stop.unwrap();
+            let deadline = std::time::Instant::now() + Duration::from_secs(20);
+            while !stop.exists() {
+                assert!(std::time::Instant::now() < deadline, "the stop was never requested");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Ok(WorkerOutcome { answer: Err(Error::Stopped), confinement: Confinement::ToolLevel, git_changes: vec![], git_scan_incomplete: false })
+        });
+        let bridge = Bridge::with_doubles(engine, Some(Agent::Claude), worker, Arc::new(|_| true));
+        (root, Server::new(bridge))
+    }
+
+    fn cancellation_of(id: u64) -> Vec<u8> {
+        json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":id,"reason":"user interrupted"}}).to_string().into_bytes()
+    }
+
+    fn delegation_of(id: u64) -> Vec<u8> {
+        json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"delegate","arguments":{"brief":"long job"}}}).to_string().into_bytes()
+    }
+
+    #[test]
+    fn a_cancelled_delegate_stops_its_job() {
+        let (_root, server) = waiting_server();
+        server.calls.lock().unwrap().insert("7".to_string(), Call::Starting);
+        let running = server.clone();
+        let call = std::thread::spawn(move || running.handle(&delegation_of(7), &mut true).unwrap());
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !matches!(server.calls.lock().unwrap().get("7"), Some(Call::Running(_))) {
+            assert!(std::time::Instant::now() < deadline, "the job never started");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(server.handle(&cancellation_of(99), &mut true).is_none(), "an unknown call is ignored");
+        assert!(server.handle(&cancellation_of(7), &mut true).is_none(), "a notification has no reply");
+        let reply = call.join().unwrap();
+        assert_eq!(reply["result"]["structuredContent"]["status"], "cancelled", "{reply}");
+        assert_eq!(reply["result"]["structuredContent"]["confinement"], "tool_level");
+    }
+
+    #[test]
+    fn a_cancellation_that_arrives_first_still_stops_the_job() {
+        let (_root, server) = waiting_server();
+        server.calls.lock().unwrap().insert("8".to_string(), Call::Starting);
+        assert!(server.handle(&cancellation_of(8), &mut true).is_none());
+        let reply = server.handle(&delegation_of(8), &mut true).unwrap();
+        assert_eq!(reply["result"]["structuredContent"]["status"], "cancelled", "{reply}");
     }
 
     #[test]

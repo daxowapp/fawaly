@@ -22,6 +22,9 @@ fn item(id: &'static str, level: Level, en: &str, ar: &str) -> Capability {
     Capability { id, level, en: en.to_string(), ar: ar.to_string() }
 }
 
+/// Never written. Real accounts always contain a colon.
+const SECRET_STORE_PROBE: &str = "capability-probe-never-stored";
+
 /// States what this computer provides. The page reads this instead of assuming.
 pub fn capabilities(engine: &Engine) -> Vec<Capability> {
     let windows = cfg!(windows);
@@ -42,8 +45,8 @@ pub fn capabilities(engine: &Engine) -> Vec<Capability> {
         list.push(item(
             "kimi_project",
             Level::Unavailable,
-            "Kimi cannot edit projects on Windows by default, because it has no boundary the app can verify. It still works for text-only tasks. You can opt in from Settings.",
-            "Kimi مش بيعدّل مشاريع على ويندوز افتراضيًا، لأن مفيش حدود التطبيق يقدر يتأكد منها. لسه شغّال في المهام النصية، وتقدر تفعّله من الإعدادات على مسؤوليتك.",
+            "Kimi cannot edit projects on Windows by default, because it has no boundary the app can verify. On text tasks nothing in the OS limits its Read tool, so it could read any file your account can open. You can opt in to project edits from Settings.",
+            "Kimi مش بيعدّل مشاريع على ويندوز افتراضيًا، لأن مفيش حدود التطبيق يقدر يتأكد منها. في المهام النصية مفيش حدود من النظام على أداة القراية بتاعته، فممكن يقرا أي ملف حسابك يقدر يفتحه. وتقدر تسمح له بتعديل المشاريع من الإعدادات على مسؤوليتك.",
         ));
     } else if cfg!(target_os = "linux") {
         if landlock {
@@ -57,17 +60,28 @@ pub fn capabilities(engine: &Engine) -> Vec<Capability> {
             list.push(item(
                 "native_workers",
                 Level::Unavailable,
-                "This kernel does not provide Landlock, so Codex, Claude Code and Kimi cannot edit projects unless you allow it in Settings. API and local assistants still work.",
-                "الكيرنل ده مفيهوش Landlock، فـCodex وClaude Code وKimi مش هيعدّلوا مشاريع إلا لو سمحت من الإعدادات. مساعدين API والموديلات المحلية شغّالين عادي.",
+                "This kernel does not provide Landlock, so Codex, Claude Code and Kimi cannot edit projects unless you allow it in Settings. On text tasks nothing in the OS limits Kimi's Read tool. API and local assistants still work.",
+                "الكيرنل ده مفيهوش Landlock، فـCodex وClaude Code وKimi مش هيعدّلوا مشاريع إلا لو سمحت من الإعدادات. وفي المهام النصية مفيش حدود من النظام على أداة القراية بتاعة Kimi. مساعدين API والموديلات المحلية شغّالين عادي.",
             ));
         }
     }
-    list.push(item(
-        "secrets",
-        Level::Supported,
-        if windows { "API keys are kept in Windows Credential Manager, never in a file." } else { "API keys are kept in your Secret Service keyring (GNOME Keyring or KWallet). If it is missing or locked, keys are not saved." },
-        if windows { "مفاتيح API محفوظة في Windows Credential Manager، ومش في ملف." } else { "مفاتيح API محفوظة في Secret Service (زي GNOME Keyring أو KWallet). لو مش موجود أو مقفول، المفتاح مش هيتحفظ." },
-    ));
+    // Reading an account that does not exist reaches the store without ever
+    // prompting to unlock it.
+    list.push(if engine.secrets.get(SECRET_STORE_PROBE).is_ok() {
+        item(
+            "secrets",
+            Level::Supported,
+            if windows { "API keys are kept in Windows Credential Manager, never in a file." } else { "API keys are kept in your Secret Service keyring (GNOME Keyring or KWallet). If it is missing or locked, keys are not saved." },
+            if windows { "مفاتيح API محفوظة في Windows Credential Manager، ومش في ملف." } else { "مفاتيح API محفوظة في Secret Service (زي GNOME Keyring أو KWallet). لو مش موجود أو مقفول، المفتاح مش هيتحفظ." },
+        )
+    } else {
+        item(
+            "secrets",
+            Level::Unavailable,
+            if windows { "Windows Credential Manager could not be reached, so API keys cannot be saved. Local assistants still work." } else { "No Secret Service keyring (GNOME Keyring or KWallet) could be reached, so API keys cannot be saved. Local assistants still work." },
+            if windows { "مقدرناش نوصل لـWindows Credential Manager، فمفاتيح API مش هتتحفظ. الموديلات المحلية شغّالة عادي." } else { "مقدرناش نوصل لـSecret Service (زي GNOME Keyring أو KWallet)، فمفاتيح API مش هتتحفظ. الموديلات المحلية شغّالة عادي." },
+        )
+    });
     list.push(item(
         "native_signin",
         Level::Limited,
@@ -92,7 +106,7 @@ pub fn capabilities(engine: &Engine) -> Vec<Capability> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::secrets::MemorySecrets;
+    use crate::secrets::{MemorySecrets, SecretStore};
     use std::sync::Arc;
 
     #[test]
@@ -102,5 +116,32 @@ mod tests {
         let list = capabilities(&engine);
         assert!(list.iter().all(|entry| !entry.en.is_empty() && !entry.ar.is_empty()));
         assert!(list.iter().any(|entry| entry.id == "updates" && entry.level == Level::Unavailable));
+        assert!(list.iter().any(|entry| entry.id == "secrets" && entry.level == Level::Supported));
+    }
+
+    struct NoKeyring;
+
+    impl SecretStore for NoKeyring {
+        fn get(&self, _: &str) -> crate::Result<Option<String>> {
+            Err(crate::Error::invalid("unavailable"))
+        }
+
+        fn set(&self, _: &str, _: &str) -> crate::Result<()> {
+            Err(crate::Error::invalid("unavailable"))
+        }
+
+        fn delete(&self, _: &str) -> crate::Result<()> {
+            Err(crate::Error::invalid("unavailable"))
+        }
+    }
+
+    #[test]
+    fn a_missing_secret_store_is_reported_in_both_languages() {
+        let root = tempfile::tempdir().unwrap();
+        let engine = Engine::with(root.path().join("d"), root.path().join("h"), Arc::new(NoKeyring));
+        let list = capabilities(&engine);
+        let secrets = list.iter().find(|entry| entry.id == "secrets").unwrap();
+        assert_eq!(secrets.level, Level::Unavailable);
+        assert!(!secrets.en.is_empty() && !secrets.ar.is_empty());
     }
 }

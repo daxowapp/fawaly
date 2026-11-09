@@ -6,7 +6,8 @@ use fawaly_core::confine;
 use fawaly_core::mcp::Server;
 use fawaly_core::model::Agent;
 use fawaly_core::secrets::{SecretStore, SystemSecrets};
-use fawaly_core::{Engine, Error, Result};
+use fawaly_core::{native, process, Engine, Error, Result};
+use std::io::BufReader;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -58,8 +59,12 @@ fn run(arguments: &[String]) -> Result<ExitCode> {
                 [flag, value] if flag == "--client" => Some(Agent::from_provider(value).filter(|agent| agent.is_primary()).ok_or_else(|| Error::invalid("Use: sudo-interns-engine mcp --client codex|claude"))?),
                 _ => return Err(Error::invalid("Use: sudo-interns-engine mcp --client codex|claude")),
             };
-            let server = Server::new(Bridge::new(engine()?, client));
-            server.serve(std::io::stdin().lock(), std::io::stdout());
+            let bridge = Bridge::new(engine()?, client);
+            process::stop_on_shutdown_signals();
+            native::sweep_stale_worker_folders();
+            // Bookkeeping about a past crash must not stop this session from starting.
+            let _ = bridge.mark_interrupted_jobs();
+            Server::new(bridge).serve(BufReader::new(std::io::stdin()), std::io::stdout());
             Ok(ExitCode::SUCCESS)
         }
         Some("status") => {
@@ -103,7 +108,7 @@ fn run(arguments: &[String]) -> Result<ExitCode> {
             confine::apply_landlock(&confine::linux_system_read_paths(), &[])?;
             Ok(ExitCode::SUCCESS)
         }
-        Some("confine") => confine_and_exec(&arguments[1..]),
+        Some("confine") => confine_worker(&arguments[1..]),
         Some("--help") => {
             println!("{USAGE}");
             Ok(ExitCode::SUCCESS)
@@ -115,8 +120,8 @@ fn run(arguments: &[String]) -> Result<ExitCode> {
     }
 }
 
-/// Applies the file boundary, then becomes the worker so it inherits it.
-fn confine_and_exec(arguments: &[String]) -> Result<ExitCode> {
+/// Runs the worker inside the file boundary and outlives it to end its children.
+fn confine_worker(arguments: &[String]) -> Result<ExitCode> {
     let mut read = Vec::new();
     let mut write = Vec::new();
     let mut index = 0;
@@ -130,20 +135,7 @@ fn confine_and_exec(arguments: &[String]) -> Result<ExitCode> {
         index += 2;
     }
     let program = arguments.get(index + 1).ok_or_else(|| Error::invalid(USAGE))?;
-    confine::apply_landlock(&read, &write)?;
-    exec(program, &arguments[index + 2..])
-}
-
-#[cfg(unix)]
-fn exec(program: &str, arguments: &[String]) -> Result<ExitCode> {
-    use std::os::unix::process::CommandExt;
-    let error = std::process::Command::new(program).args(arguments).exec();
-    Err(Error::invalid(format!("Sudo Interns could not start the confined worker: {error}")))
-}
-
-#[cfg(not(unix))]
-fn exec(_program: &str, _arguments: &[String]) -> Result<ExitCode> {
-    Err(Error::invalid("Confined launch is available only on Linux."))
+    confine::run_confined(&read, &write, program, &arguments[index + 2..])
 }
 
 fn main() -> ExitCode {

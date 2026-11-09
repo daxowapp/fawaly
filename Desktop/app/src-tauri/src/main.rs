@@ -7,7 +7,7 @@ use fawaly_core::log::{ApiUsage, ConsultLog, TeamJobLog};
 use fawaly_core::model::*;
 use fawaly_core::signin::NativeSignIn;
 use fawaly_core::skills::{self, InstallPlan, ProjectSkills, Scope};
-use fawaly_core::store::{ApiAssistant, ApiAssistantStore, WorkshopStore};
+use fawaly_core::store::{apply_team, commit_team as commit_team_edit, load_daily, remove_app_data, restore_team_link, shown_reading, ApiAssistant, ApiAssistantStore, TeamLinkMarker, WorkshopStore};
 use fawaly_core::{installer, openrouter, paths, secrets, support, Engine};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -148,12 +148,22 @@ struct RulesInput {
 fn save_team(app: State<'_, App>, team: TeamSettings, mode: AdvisorMode) -> Reply<()> {
     team.validate().map_err(text)?;
     update_state(&app, |state| {
-        state.team = Some(team);
-        state.advisors.mode = mode;
-        state.delegation_policy = None;
+        apply_team(state, team, mode);
         Ok(())
     })?;
     Ok(())
+}
+
+/// Checks an edit in progress. An existing team changes only in `commit_team`.
+#[tauri::command(async)]
+fn check_team(team: TeamSettings) -> Reply<()> {
+    team.validate().map_err(text)
+}
+
+/// Returns a previous primary that could not be disconnected, for the page to report.
+#[tauri::command(async)]
+fn commit_team(app: State<'_, App>, team: TeamSettings, mode: AdvisorMode) -> Reply<Option<Agent>> {
+    commit_team_edit(&ClientLink::new(app.engine.clone()), &engine_source()?, team, mode).map_err(text)
 }
 
 #[tauri::command(async)]
@@ -225,7 +235,10 @@ fn connect_team(app: State<'_, App>) -> Reply<()> {
     let state = load_state(&app)?;
     let team = state.team.ok_or("Choose your team first.")?;
     team.validate().map_err(text)?;
-    ClientLink::new(app.engine.clone()).connect(team.primary, &engine_source()?).map_err(text)
+    ClientLink::new(app.engine.clone()).connect(team.primary, &engine_source()?).map_err(text)?;
+    // Only an upgrade reads this, and the connection above already succeeded.
+    let _ = TeamLinkMarker::new(&app.engine.root).set();
+    Ok(())
 }
 
 #[tauri::command(async)]
@@ -248,7 +261,9 @@ fn connection_status(app: State<'_, App>) -> Reply<Value> {
 fn disconnect_team(app: State<'_, App>) -> Reply<bool> {
     let state = load_state(&app)?;
     let team = state.team.ok_or("Choose your team first.")?;
-    ClientLink::new(app.engine.clone()).disconnect(team.primary).map_err(text)
+    let removed = ClientLink::new(app.engine.clone()).disconnect(team.primary).map_err(text)?;
+    TeamLinkMarker::new(&app.engine.root).clear().map_err(text)?;
+    Ok(removed)
 }
 
 #[tauri::command(async)]
@@ -345,26 +360,23 @@ fn save_assistant(app: State<'_, App>, input: AssistantInput) -> Reply<()> {
     if let Some(enabled) = input.enabled {
         assistant.enabled = enabled;
     }
-    assistant.validate().map_err(text)?;
-    let pending = input.use_pending_openrouter.unwrap_or(false).then(|| app.pending_openrouter.lock().unwrap().take()).flatten();
-    let key = pending.or(input.key.filter(|value| !value.is_empty()));
-    if let Some(key) = &key {
-        secrets::validate_key(key).map_err(text)?;
-        app.engine.secrets.set(&assistant.key_account(), key).map_err(text)?;
-    } else if !assistant.is_local() && app.engine.secrets.get(&assistant.key_account()).map_err(text)?.is_none() {
-        return Err("Enter this service's key first.".to_string());
+    // The sign-in key stays held until it is safely stored, so a locked keyring can be retried.
+    let pending = input.use_pending_openrouter.unwrap_or(false).then(|| app.pending_openrouter.lock().unwrap().clone()).flatten();
+    let key = pending.clone().or(input.key.filter(|value| !value.is_empty()));
+    store.save_with_key(app.engine.secrets.as_ref(), assistant, key.as_deref()).map_err(text)?;
+    if pending.is_some() {
+        let mut held = app.pending_openrouter.lock().unwrap();
+        if *held == pending {
+            *held = None;
+        }
     }
-    store.save(assistant).map_err(text)
+    Ok(())
 }
 
 #[tauri::command(async)]
 fn remove_assistant(app: State<'_, App>, agent: String) -> Reply<()> {
     let agent = parse_agent(&agent)?;
-    let store = ApiAssistantStore::new(&app.engine.root);
-    if let Some(assistant) = store.load(agent).map_err(text)?.filter(|assistant| !assistant.is_local()) {
-        app.engine.secrets.delete(&assistant.key_account()).map_err(text)?;
-    }
-    store.remove(agent).map_err(text)
+    ApiAssistantStore::new(&app.engine.root).remove_with_key(app.engine.secrets.as_ref(), agent).map_err(text)
 }
 
 /// A real, billed request. It runs only from the explicit Save & test button.
@@ -378,9 +390,11 @@ fn test_assistant(app: State<'_, App>, agent: String) -> Reply<String> {
 }
 
 #[tauri::command(async)]
-fn list_models(app: State<'_, App>, agent: String, key: Option<String>) -> Reply<Vec<String>> {
+fn list_models(app: State<'_, App>, agent: String, key: Option<String>, endpoint: Option<String>) -> Reply<Vec<String>> {
     let agent = parse_agent(&agent)?;
-    let mut assistant = ApiAssistantStore::new(&app.engine.root).load(agent).map_err(text)?.unwrap_or_else(|| ApiAssistant::preset(agent));
+    let saved = ApiAssistantStore::new(&app.engine.root).load(agent).map_err(text)?.unwrap_or_else(|| ApiAssistant::preset(agent));
+    // A typed key may go only to the endpoint displayed next to it.
+    let mut assistant = saved.with_form_endpoint(endpoint.as_deref()).map_err(text)?;
     if assistant.model.is_empty() {
         assistant.model = "placeholder".to_string();
     }
@@ -426,8 +440,7 @@ fn skills_target(app: &App, scope: Scope, directory: Option<String>) -> Reply<Pr
         Scope::AllProjects => Ok(ProjectSkills::global(&app.engine.home)),
         Scope::Project => {
             let directory = directory.ok_or("Choose a project folder.")?;
-            let approved = if app.engine.approved_workspace(&directory).is_ok() { app.engine.approved_workspace(&directory).map_err(text)? } else { app.engine.allow_workspace(&directory).map_err(text)? };
-            Ok(ProjectSkills::project(&approved, &app.engine.home))
+            ProjectSkills::validated_project(&app.engine, &directory).map_err(text)
         }
     }
 }
@@ -468,8 +481,9 @@ fn skills_preview(app: State<'_, App>, id: String, scope: Scope, directory: Opti
         "destination": plan.directory,
         "scope": plan.scope,
         "warnings": plan.warnings,
+        "requirements": item.requirements,
         "writes": plan.writes.iter().map(|write| write.path.clone()).collect::<Vec<_>>(),
-        "preview": fawaly_core::model::cap_text(&plan.preview, 4096).0,
+        "preview": plan.preview,
         "hasScripts": item.has_scripts,
         "hasHooks": item.has_hooks,
     });
@@ -484,16 +498,10 @@ fn skills_install(app: State<'_, App>, id: String) -> Reply<()> {
 }
 
 #[tauri::command(async)]
-fn daily_load(app: State<'_, App>, refresh: bool) -> Reply<Value> {
-    let store = DailyStore::new(&app.engine.root);
-    let mut snapshot = store.load().map_err(text)?;
-    let now = chrono::Utc::now();
-    if refresh || snapshot.due(now) {
-        snapshot = daily::refresh(&snapshot, &app.engine.transport, now);
-        store.save_snapshot(&snapshot).map_err(text)?;
-    }
+fn daily_load(app: State<'_, App>, refresh: bool) -> Value {
+    let page = load_daily(&DailyStore::new(&app.engine.root), &app.engine.transport, refresh, chrono::Utc::now());
     let names: Value = daily::SOURCES.iter().map(|source| (source.id.to_string(), json!(source.name))).collect::<serde_json::Map<_, _>>().into();
-    Ok(json!({"snapshot": snapshot, "reading": store.reading().map_err(text)?, "sources": names}))
+    json!({"snapshot": page.snapshot, "reading": page.reading, "issues": page.issues, "sources": names})
 }
 
 #[tauri::command(async)]
@@ -514,7 +522,7 @@ fn daily_mark(app: State<'_, App>, article: daily::DailyArticle, saved: Option<b
         reading.read.insert(article.url.clone());
     }
     store.save_reading(&reading).map_err(text)?;
-    serde_json::to_value(reading).map_err(text)
+    serde_json::to_value(shown_reading(reading, chrono::Utc::now())).map_err(text)
 }
 
 #[tauri::command(async)]
@@ -524,37 +532,36 @@ fn daily_brief(article: daily::DailyArticle, arabic: bool) -> String {
 
 #[tauri::command(async)]
 fn remove_my_data(app: State<'_, App>) -> Reply<()> {
-    let link = ClientLink::new(app.engine.clone());
-    for primary in Agent::PRIMARY {
-        let _ = link.disconnect(primary);
-    }
-    let store = ApiAssistantStore::new(&app.engine.root);
-    for assistant in store.all().map_err(text)?.into_iter().filter(|assistant| !assistant.is_local()) {
-        app.engine.secrets.delete(&assistant.key_account()).map_err(text)?;
-    }
-    let root = app.engine.root.clone();
-    if root.exists() {
-        std::fs::remove_dir_all(&root).map_err(text)?;
-    }
-    Ok(())
+    let arabic = load_state(&app).is_ok_and(|state| state.arabic);
+    fawaly_core::native::sweep_stale_worker_folders();
+    remove_app_data(&ClientLink::new(app.engine.clone()), arabic).map_err(text)
 }
 
 fn main() {
     let mut engine = Engine::live().expect("application data folder");
     engine.helper = paths::ensure_private_dir(&engine.root).ok().and_then(|()| engine_source().ok()).and_then(|source| client_link::prepare_launcher(&engine, &source).ok());
+    let for_restore = engine.clone();
     let state = App { engine, cancel: Arc::new(AtomicBool::new(false)), plans: Mutex::new(HashMap::new()), pending_openrouter: Mutex::new(None) };
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .setup(|app| {
+        .setup(move |app| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_focus();
             }
+            // Runs apart from startup, because a failure here must never hold up the window.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let Ok(source) = engine_source() else { return };
+                if matches!(restore_team_link(&ClientLink::new(for_restore), &source), Ok(true)) {
+                    let _ = handle.emit("team-reconnected", ());
+                }
+            });
             Ok(())
         })
         .manage(state)
         .invoke_handler(tauri::generate_handler![
-            bootstrap, selftest_report, set_preferences, save_team, save_rules, finish_onboarding, cancel_operation, prepare_service, sign_in, sign_out, connect_team, connection_status,
+            bootstrap, selftest_report, set_preferences, save_team, check_team, commit_team, save_rules, finish_onboarding, cancel_operation, prepare_service, sign_in, sign_out, connect_team, connection_status,
             disconnect_team, choose_project, pick_folder, revoke_project, open_link, activity, save_assistant, remove_assistant, test_assistant, list_models,
             set_worker_model, openrouter_sign_in, skills_list, skills_preview, skills_install, daily_load, daily_mark, daily_brief, remove_my_data
         ])

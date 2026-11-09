@@ -52,6 +52,27 @@ impl TeamJobLog {
         payload.map(|data| Ok(serde_json::from_slice(&data)?)).transpose()
     }
 
+    /// Closes a job whose engine died. Only a job still marked running changes.
+    pub fn mark_interrupted(&self, id: Uuid) -> Result<bool> {
+        let mut connection = open(&self.root)?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let payload: Option<Vec<u8>> = transaction
+            .query_row("SELECT payload FROM team_jobs WHERE id = ?1", [id.to_string()], |row| row.get(0))
+            .optional()?;
+        let Some(payload) = payload else { return Ok(false) };
+        let mut job: TeamJob = serde_json::from_slice(&payload)?;
+        if job.status != "running" {
+            return Ok(false);
+        }
+        job.status = "interrupted".to_string();
+        job.finished = Some(Utc::now());
+        job.result = Some("The engine stopped before this job finished. Review the workspace for partial edits.".to_string());
+        job.review_required = true;
+        transaction.execute("UPDATE team_jobs SET payload = ?1 WHERE id = ?2", params![serde_json::to_vec(&job)?, id.to_string()])?;
+        transaction.commit()?;
+        Ok(true)
+    }
+
     pub fn record_review(&self, id: Uuid, review: TeamReview) -> Result<TeamJob> {
         if review.summary.trim().is_empty()
             || review.summary.len() > 2_048
@@ -251,6 +272,7 @@ mod tests {
             reviews: vec![],
             confinement: None,
             git_changes: vec![],
+            git_scan_incomplete: false,
         }
     }
 
@@ -280,6 +302,24 @@ mod tests {
         running.finished = None;
         log.save(&running).unwrap();
         assert!(log.record_review(running.id, review(Agent::Codex, ReviewDecision::Accepted)).is_err());
+    }
+
+    #[test]
+    fn only_a_running_job_can_be_marked_interrupted() {
+        let root = tempfile::tempdir().unwrap();
+        let log = TeamJobLog::new(root.path());
+        let finished = job();
+        log.save(&finished).unwrap();
+        assert!(!log.mark_interrupted(finished.id).unwrap());
+        assert_eq!(log.get(finished.id).unwrap().unwrap().status, "needs_handoff");
+        let mut running = job();
+        running.status = "running".into();
+        running.finished = None;
+        log.save(&running).unwrap();
+        assert!(log.mark_interrupted(running.id).unwrap());
+        let closed = log.get(running.id).unwrap().unwrap();
+        assert_eq!(closed.status, "interrupted");
+        assert!(closed.finished.is_some(), "it can now be reviewed");
     }
 
     #[test]

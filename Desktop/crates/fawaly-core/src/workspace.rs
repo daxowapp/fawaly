@@ -22,8 +22,12 @@ pub fn digest(data: &[u8]) -> String {
     hex::encode(Sha256::digest(data))
 }
 
+/// Also matches the NTFS short name of `.git`, such as `GIT~1`, which opens the
+/// real folder on volumes that generate 8.3 names.
 fn is_git_name(name: &str) -> bool {
-    name.trim().trim_end_matches(['.', ' ']).eq_ignore_ascii_case(".git")
+    let name = name.trim().trim_end_matches(['.', ' ']).to_ascii_lowercase();
+    let short_name = name.strip_prefix("git~").is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit()));
+    name == ".git" || short_name
 }
 
 fn windows_unsafe(component: &str) -> bool {
@@ -226,6 +230,10 @@ mod tests {
             ".GIT/config",
             ".git./config",
             ".git /config",
+            "GIT~1/config",
+            "git~1/hooks/post-checkout",
+            "Git~12/config",
+            "sub/GIT~2/config",
             "a//b",
             "C:/Windows/x",
             "file.txt:stream",
@@ -235,6 +243,14 @@ mod tests {
         ] {
             assert!(workspace.write(path, "x", "").is_err(), "{path} must be rejected");
             assert!(workspace.read(path).is_err(), "{path} must be rejected");
+        }
+    }
+
+    #[test]
+    fn ordinary_names_with_a_tilde_stay_usable() {
+        let (_folder, workspace) = workspace();
+        for path in ["git~/a.txt", "git~x/a.txt", "git~1x/a.txt", "notgit~1/a.txt"] {
+            workspace.write(path, "x", "").unwrap();
         }
     }
 

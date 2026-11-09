@@ -8,6 +8,7 @@ use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 struct Mcp {
     child: Child,
@@ -35,14 +36,23 @@ impl Mcp {
         session
     }
 
-    fn request(&mut self, method: &str, params: Value) -> Value {
+    fn send(&mut self, method: &str, params: Value) -> u64 {
         let id = self.next;
         self.next += 1;
         writeln!(self.stdin.as_mut().unwrap(), "{}", json!({"jsonrpc":"2.0","id":id,"method":method,"params":params})).unwrap();
         self.stdin.as_mut().unwrap().flush().unwrap();
+        id
+    }
+
+    fn reply(&mut self) -> Value {
         let mut line = String::new();
         self.stdout.read_line(&mut line).unwrap();
-        let reply: Value = serde_json::from_str(&line).unwrap();
+        serde_json::from_str(&line).unwrap()
+    }
+
+    fn request(&mut self, method: &str, params: Value) -> Value {
+        let id = self.send(method, params);
+        let reply = self.reply();
         assert_eq!(reply["id"], json!(id), "{reply}");
         reply["result"].clone()
     }
@@ -69,6 +79,11 @@ impl Drop for Mcp {
 
 /// Answers OpenAI-format chat requests from a script, in order.
 fn fake_model(replies: Vec<Value>) -> (u16, Arc<Mutex<Vec<Value>>>) {
+    slow_model(Duration::ZERO, replies)
+}
+
+/// A provider that takes `delay` to answer each request.
+fn slow_model(delay: Duration, replies: Vec<Value>) -> (u16, Arc<Mutex<Vec<Value>>>) {
     let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let port = listener.local_addr().unwrap().port();
     let seen = Arc::new(Mutex::new(Vec::new()));
@@ -93,8 +108,10 @@ fn fake_model(replies: Vec<Value>) -> (u16, Arc<Mutex<Vec<Value>>>) {
                 data.extend_from_slice(&buffer[..count]);
             }
             observed.lock().unwrap().push(serde_json::from_slice::<Value>(&data[header_end..]).unwrap());
+            std::thread::sleep(delay);
             let body = replies.next().expect("unexpected model request").to_string();
-            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+            // The engine may have stopped waiting by now.
+            let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
         }
     });
     (port, seen)
@@ -167,6 +184,7 @@ fn primary_consults_delegates_and_reviews_a_real_file_edit() {
     assert_eq!(roster["advisor"]["mode"], "important");
 
     let consult = mcp.tool("consult", json!({"question":"Plan: update greeting. Sound?","context":"small change","reason":"plan"}));
+    assert_eq!(consult["confinement"], "no_project_access");
     assert_eq!(consult["rounds"][0]["advice"], "Plan looks sound. Verify the file afterwards.");
     mcp.tool("consult_decide", json!({"consultId":consult["id"],"decision":"adopted","summary":"Proceed"}));
 
@@ -211,6 +229,114 @@ fn another_client_cannot_use_this_team() {
     let error = mcp.tool_error("delegate", json!({"brief":"Edit it","cwd":profile.project}));
     assert!(error.contains("configured primary"), "{error}");
     assert!(seen.lock().unwrap().is_empty());
+}
+
+#[test]
+fn an_oversized_message_is_answered_and_the_session_continues() {
+    let (advisor_port, _) = fake_model(vec![]);
+    let (worker_port, _) = fake_model(vec![]);
+    let profile = profile(advisor_port, worker_port);
+    let mut session = Mcp::start(&profile.data, &profile.home, "claude");
+    writeln!(session.stdin.as_mut().unwrap(), "{}", "x".repeat(600 * 1024)).unwrap();
+    session.stdin.as_mut().unwrap().flush().unwrap();
+    let mut line = String::new();
+    session.stdout.read_line(&mut line).unwrap();
+    let reply: Value = serde_json::from_str(&line).unwrap();
+    assert_eq!(reply["error"]["code"], -32700, "{reply}");
+    assert_eq!(session.tool("roster_get", json!({}))["team"]["primary"], "claude");
+}
+
+fn wait_for_model_request(seen: &Mutex<Vec<Value>>) {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while seen.lock().unwrap().is_empty() {
+        assert!(Instant::now() < deadline, "the worker never called the model");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+fn running_jobs(profile: &Profile) -> Vec<Value> {
+    let output = Command::new(env!("CARGO_BIN_EXE_sudo-interns-engine"))
+        .arg("status")
+        .env("SUDO_INTERNS_DATA_DIR", &profile.data)
+        .env("SUDO_INTERNS_HOME", &profile.home)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    serde_json::from_slice::<Value>(&output.stdout).unwrap()["active"].as_array().unwrap().clone()
+}
+
+fn delegation(project: &Path) -> Value {
+    json!({"name":"delegate","arguments":{"brief":"Read greeting.txt","cwd":project}})
+}
+
+#[test]
+fn a_client_cancellation_stops_a_delegate_through_the_real_session() {
+    let (advisor_port, _) = fake_model(vec![]);
+    let (worker_port, seen) = slow_model(Duration::from_secs(2), vec![tool_call("1", "read_file", json!({"path":"greeting.txt"})), text("too late")]);
+    let profile = profile(advisor_port, worker_port);
+    allow(&profile);
+    let mut session = Mcp::start(&profile.data, &profile.home, "claude");
+    let id = session.send("tools/call", delegation(&profile.project));
+    wait_for_model_request(&seen);
+    writeln!(session.stdin.as_mut().unwrap(), "{}", json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":id,"reason":"user interrupted"}})).unwrap();
+    let reply = session.reply();
+    assert_eq!(reply["id"], json!(id), "{reply}");
+    assert_eq!(reply["result"]["structuredContent"]["status"], "needs_handoff", "{reply}");
+    assert_eq!(seen.lock().unwrap().len(), 1, "no model round may follow the cancellation");
+    assert_eq!(session.tool("status", json!({}))["active"], json!([]));
+}
+
+#[cfg(unix)]
+fn terminate(session: &Mcp) {
+    assert!(Command::new("kill").args(["-TERM", &session.child.id().to_string()]).status().unwrap().success());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_termination_signal_during_a_delegate_ends_the_worker_and_closes_its_job() {
+    let (advisor_port, _) = fake_model(vec![]);
+    let (worker_port, seen) = slow_model(Duration::from_secs(2), vec![tool_call("1", "read_file", json!({"path":"greeting.txt"})), text("too late")]);
+    let profile = profile(advisor_port, worker_port);
+    allow(&profile);
+    let mut session = Mcp::start(&profile.data, &profile.home, "claude");
+    session.send("tools/call", delegation(&profile.project));
+    wait_for_model_request(&seen);
+    terminate(&session);
+    let reply = session.reply();
+    assert_eq!(reply["result"]["structuredContent"]["status"], "needs_handoff", "{reply}");
+    assert!(session.child.wait().unwrap().success());
+    assert_eq!(seen.lock().unwrap().len(), 1, "no model round may follow the signal");
+    assert_eq!(running_jobs(&profile), Vec::<Value>::new());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_termination_signal_does_not_wait_for_a_blocked_model_request() {
+    let (advisor_port, _) = fake_model(vec![]);
+    let (worker_port, seen) = slow_model(Duration::from_secs(120), vec![text("too late")]);
+    let profile = profile(advisor_port, worker_port);
+    allow(&profile);
+    let mut session = Mcp::start(&profile.data, &profile.home, "claude");
+    session.send("tools/call", delegation(&profile.project));
+    wait_for_model_request(&seen);
+    let signalled = Instant::now();
+    terminate(&session);
+    assert!(session.child.wait().unwrap().success());
+    assert!(signalled.elapsed() < Duration::from_secs(30), "took {:?}", signalled.elapsed());
+    assert_eq!(running_jobs(&profile), Vec::<Value>::new(), "the abandoned job must not stay running");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_termination_signal_ends_the_engine_cleanly_with_input_still_open() {
+    let (advisor_port, _) = fake_model(vec![]);
+    let (worker_port, _) = fake_model(vec![]);
+    let profile = profile(advisor_port, worker_port);
+    let mut session = Mcp::start(&profile.data, &profile.home, "claude");
+    let status = Command::new("kill").args(["-TERM", &session.child.id().to_string()]).status().unwrap();
+    assert!(status.success());
+    let ended = session.child.wait().unwrap();
+    assert!(ended.success(), "the engine must drain and exit normally: {ended:?}");
 }
 
 #[test]

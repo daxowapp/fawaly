@@ -102,6 +102,7 @@ impl NativeSignIn {
     pub fn sign_out(&self, agent: Agent, cancel: &AtomicBool) -> Result<()> {
         let _lock = self.engine.lock_job()?;
         if agent == Agent::Kimi {
+            crate::native::sweep_stale_worker_folders();
             // Removes this app's whole Kimi profile, not just one credential folder.
             let directory = self.engine.auth_dir(Agent::Kimi);
             if directory.exists() {

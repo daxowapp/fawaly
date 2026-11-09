@@ -44,11 +44,9 @@ impl Engine {
         vec![directory.join(&name), directory.join("bin").join(&name)]
     }
 
-    /// `.cmd`/`.bat` shims are skipped on Windows; they cannot be launched without a shell.
-    pub fn executable(&self, agent: Agent) -> Option<PathBuf> {
-        if !agent.is_native() {
-            return None;
-        }
+    /// Fixed absolute locations only. A PATH search can find a script that cannot run
+    /// under the engine's fixed PATH, which would also suppress the official install.
+    fn candidates(&self, agent: Agent) -> Vec<PathBuf> {
         let name = paths::exe_name(agent.raw());
         let mut candidates = self.managed_candidates(agent);
         if agent != Agent::Kimi {
@@ -57,14 +55,16 @@ impl Engine {
                 candidates.push(PathBuf::from("/usr/local/bin").join(&name));
                 candidates.push(PathBuf::from("/usr/bin").join(&name));
             }
-            if let Ok(found) = which::which(&name) {
-                candidates.push(found);
-            }
         }
+        candidates.retain(|path| path.is_absolute());
         candidates
-            .into_iter()
-            .find(|path| path.is_file() && path.to_string_lossy().to_lowercase().ends_with(&name.to_lowercase()))
-            .map(|path| dunce::canonicalize(&path).unwrap_or(path))
+    }
+
+    pub fn executable(&self, agent: Agent) -> Option<PathBuf> {
+        if !agent.is_native() {
+            return None;
+        }
+        self.candidates(agent).into_iter().find(|path| path.is_file()).map(|path| dunce::canonicalize(&path).unwrap_or(path))
     }
 
     pub fn is_ready(&self, agent: Agent) -> bool {
@@ -313,6 +313,24 @@ mod tests {
         let root = home.join(".local/share/SudoInterns");
         std::fs::create_dir_all(&root).unwrap();
         (base, Engine::with(root, home, Arc::new(MemorySecrets::default())))
+    }
+
+    #[test]
+    fn executables_come_only_from_fixed_absolute_locations() {
+        let (_base, engine) = setup();
+        let name = paths::exe_name(Agent::Codex.raw());
+        let runtime = engine.runtime_dir(Agent::Codex);
+        let mut expected = vec![runtime.join(&name), runtime.join("bin").join(&name), engine.home.join(".local").join("bin").join(&name)];
+        if cfg!(unix) {
+            expected.push(PathBuf::from("/usr/local/bin").join(&name));
+            expected.push(PathBuf::from("/usr/bin").join(&name));
+        }
+        assert_eq!(engine.candidates(Agent::Codex), expected);
+        let kimi = paths::exe_name(Agent::Kimi.raw());
+        let runtime = engine.runtime_dir(Agent::Kimi);
+        assert_eq!(engine.candidates(Agent::Kimi), vec![runtime.join(&kimi), runtime.join("bin").join(&kimi)]);
+        let relative = Engine::with(PathBuf::from("data"), PathBuf::from("home"), Arc::new(MemorySecrets::default()));
+        assert!(relative.candidates(Agent::Codex).iter().all(|path| path.is_absolute()));
     }
 
     #[test]

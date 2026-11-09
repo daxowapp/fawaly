@@ -8,7 +8,7 @@ The Windows and Linux app lives in [`Desktop/`](../Desktop). It is a Tauri 2 app
 
 | System | Package | Notes |
 | --- | --- | --- |
-| Windows x64, arm64 | `*-setup.exe` (recommended) or `.msi` | Needs the Microsoft Edge WebView2 runtime. SmartScreen will warn, because the installer is unsigned. |
+| Windows x64, arm64 | `*-setup.exe` (recommended) or `.msi` | Needs the Microsoft Edge WebView2 runtime. SmartScreen will warn, because the installer is unsigned. Choose the EXE: removing the MSI does not remove the team connection. |
 | Ubuntu, Debian | `.deb` | `sudo apt install ./file.deb` |
 | Fedora, RHEL family | `.rpm` | `sudo dnf install ./file.rpm` |
 | Other Linux | `.AppImage` | `chmod +x`, then run. Needs FUSE 2. |
@@ -23,9 +23,11 @@ The app states the actual limit on every job, and in **Settings → What works o
 | --- | --- | --- |
 | API and local assistants | Enforced by the app. File tools only, no shell. | Same. |
 | Codex, Claude Code | **Tool-level.** Limited by each CLI's own settings. The OS does not enforce it. | Enforced by the kernel (Landlock), inside the project tree. `.git` is monitored, not protected: changes are flagged for review. |
-| Kimi | **Off for project edits.** Text-only unless you opt in, with no boundary. | Same as Codex on Linux. |
+| Kimi | **Off for project edits** unless you opt in, with no boundary. On text tasks nothing in the OS limits its Read tool, so it could read any file your account can open. | Same as Codex on Linux. |
 
-If a Linux kernel lacks Landlock, native workers cannot edit projects unless you allow it in Delegation rules.
+If a Linux kernel lacks Landlock, native workers cannot edit projects unless you allow it in Delegation rules, and Kimi's text tasks have the same limit as on Windows.
+
+On Linux, a job's background processes are ended before the job is reported. A hostile worker can get around this by killing the helper that supervises it. Any process it leaves running is still held by Landlock.
 
 ## Paid fallback
 
@@ -35,8 +37,10 @@ A busy assigned worker never rolls over to a paid one. The request stops and say
 
 - Automatic updates.
 - Comparing assistants, menu bar monitoring and preference sync (Mac only).
-- Removing a `.deb` or `.rpm` cannot clear a user's agent settings, because it runs as root. Use **Settings → Disconnect the team and remove my data** first. The Windows uninstaller removes the team connection itself.
+- Removing a `.deb` or `.rpm` cannot clear a user's agent settings, because it runs as root. Use **Settings → Disconnect the team and remove my data** first.
+- Removing the Windows `.msi` does not remove the team connection. Your agent keeps the registration and can still start the team. Before removing the MSI, use **Settings → Disconnect the team and remove my data**. That also deletes this app's task log, keys and sign-ins. To keep them, use **Disconnect team** on the Primary connection page instead. The EXE installer's uninstaller removes the team connection itself, so the EXE is the recommended package.
 - Sign-ins for Codex, Claude Code and Kimi are files managed by each official CLI, in a private app folder. They are not in the system secret store.
+- Publisher signature checks on the CLIs the app downloads. For Codex, Claude Code and Kimi, the app uses HTTPS to official hosts only and compares each download with the official published SHA-256 checksum. On Windows and Linux it does not check a publisher signature, as the Mac app does. The checksum catches a download damaged or changed on the way. It cannot catch a release replaced at the source, because the checksum is published in the same place as the file. The app then runs the new CLI once to confirm it works, with your user account's access.
 
 ## What has been tested
 
@@ -59,7 +63,8 @@ Also verified in CI:
 - Linux: a hostile process under Landlock could not write outside the project through absolute paths, `..`, symlinks or child processes, could not read outside files or move files across the boundary, and could not read the home folder.
 - Windows: file tools refuse junctions that lead outside the project.
 - The system secret store round-trips on Windows and Linux. On Linux, with no Secret Service, it fails closed.
-- Uninstall on Windows Server 2022 and the `disconnect` command on Ubuntu remove the team registration and keep the other MCP server.
+- Uninstalling the EXE on Windows Server 2022 removes the team registration and keeps the other MCP server.
+- The `disconnect` command on Ubuntu keeps the other MCP server. The check that it removes the team registration could not fail in the run above, so that removal is not shown by it. The check has since been corrected and has not run yet.
 
 Not verified:
 

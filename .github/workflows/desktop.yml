@@ -273,7 +273,10 @@ jobs:
         run: |
           # Package removal runs as root and cannot reach a user's agent settings.
           /usr/bin/sudo-interns-engine disconnect
-          ! grep -q 'mcp_servers.fawaly_team' ~/.codex/config.toml
+          if grep -q 'mcp_servers.fawaly_team' ~/.codex/config.toml; then
+            echo "the team registration remains after disconnect" >&2
+            exit 1
+          fi
           grep -q 'mcp_servers.keep_me' ~/.codex/config.toml
           sudo apt-get remove -y sudo-interns
           test ! -e /usr/bin/sudo-interns

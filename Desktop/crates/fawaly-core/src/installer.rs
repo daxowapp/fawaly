@@ -21,9 +21,20 @@ pub struct Platform {
     pub kimi: &'static str,
 }
 
+/// The loader named near the start of a program shows which libc the system runs on.
+fn names_musl_loader(program: impl Read) -> bool {
+    let mut header = Vec::new();
+    program.take(4096).read_to_end(&mut header).is_ok() && header.windows(9).any(|bytes| bytes == b"/ld-musl-")
+}
+
+/// The loader file alone proves nothing: glibc systems get it from the optional musl package.
+fn system_uses_musl() -> bool {
+    File::open("/bin/sh").is_ok_and(names_musl_loader)
+}
+
 /// Returns None on a combination the official runtimes do not ship for.
 pub fn platform() -> Option<Platform> {
-    let musl = cfg!(target_os = "linux") && (Path::new("/lib/ld-musl-x86_64.so.1").exists() || Path::new("/lib/ld-musl-aarch64.so.1").exists());
+    let musl = cfg!(target_os = "linux") && system_uses_musl();
     let (codex, claude, kimi) = match (std::env::consts::OS, std::env::consts::ARCH) {
         ("linux", "x86_64") => ("x86_64-unknown-linux-musl", "linux-x64", "linux-x64"),
         ("linux", "aarch64") => ("aarch64-unknown-linux-musl", "linux-arm64", "linux-arm64"),
@@ -284,7 +295,7 @@ fn find_entry(directory: &Path, agent: Agent) -> Option<PathBuf> {
 }
 
 /// Windows antivirus can hold a new executable open for a moment after it runs.
-fn retry_while_denied<T>(mut action: impl FnMut() -> std::io::Result<T>, pause: Duration) -> std::io::Result<T> {
+pub(crate) fn retry_while_denied<T>(mut action: impl FnMut() -> std::io::Result<T>, pause: Duration) -> std::io::Result<T> {
     let mut attempts = 0;
     loop {
         match action() {
@@ -354,6 +365,16 @@ mod tests {
         );
         assert!(outcome.is_err());
         assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn only_a_program_using_the_musl_loader_counts_as_musl() {
+        let program = |interpreter: &str| [&b"\x7fELF"[..], &[0_u8; 600], interpreter.as_bytes(), &[0_u8; 600]].concat();
+        assert!(names_musl_loader(program("/lib/ld-musl-x86_64.so.1").as_slice()));
+        assert!(names_musl_loader(program("/lib/ld-musl-aarch64.so.1").as_slice()));
+        assert!(!names_musl_loader(program("/lib64/ld-linux-x86-64.so.2").as_slice()));
+        assert!(!names_musl_loader(program("/lib/ld-linux-aarch64.so.1").as_slice()));
+        assert!(!names_musl_loader(&b""[..]));
     }
 
     #[test]

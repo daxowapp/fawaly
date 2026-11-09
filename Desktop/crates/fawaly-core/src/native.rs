@@ -3,18 +3,21 @@ use crate::confine::{self, Confinement};
 use crate::engine::{Engine, CLAUDE_TOKEN_ACCOUNT};
 use crate::model::{cap_text, valid_model, Agent, ADVICE_LIMIT};
 use crate::process::{self, WorkerSpec};
-use crate::store::{ApiAssistantStore, WorkshopStore};
+use crate::store::{ApiAssistant, ApiAssistantStore, WorkshopStore};
 use crate::{paths, skills, Error, Result};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 const PROMPT_LIMIT: usize = 120 * 1024;
 
-#[derive(Clone, Debug)]
+/// What a launched worker left behind. A launch that fails still reports its
+/// limit and any .git changes, so a failing worker cannot hide them.
+#[derive(Debug)]
 pub struct WorkerOutcome {
-    pub answer: String,
+    pub answer: Result<String>,
     pub confinement: Confinement,
     pub git_changes: Vec<String>,
+    pub git_scan_incomplete: bool,
 }
 
 pub struct Invocation {
@@ -153,14 +156,20 @@ pub fn kimi_has_credentials(authentication: &Path) -> bool {
     })
 }
 
-fn copy_tree(source: &Path, target: &Path) -> Result<()> {
+/// A worker killed while saving a token can leave it half-written, so a JSON
+/// file that does not parse is skipped instead of replacing a good one.
+fn copy_credentials(source: &Path, target: &Path) -> Result<()> {
     std::fs::create_dir_all(target)?;
     for entry in std::fs::read_dir(source)?.flatten() {
         let info = std::fs::symlink_metadata(entry.path())?;
         if info.is_file() {
-            std::fs::copy(entry.path(), target.join(entry.file_name()))?;
+            let data = std::fs::read(entry.path())?;
+            let json = entry.path().extension().is_some_and(|extension| extension == "json");
+            if !json || serde_json::from_slice::<Value>(&data).is_ok() {
+                paths::write_atomic(&target.join(entry.file_name()), &data)?;
+            }
         } else if info.is_dir() {
-            copy_tree(&entry.path(), &target.join(entry.file_name()))?;
+            copy_credentials(&entry.path(), &target.join(entry.file_name()))?;
         }
     }
     Ok(())
@@ -178,7 +187,7 @@ fn prepare_kimi(directory: &Path, authentication: &Path, workspace: Option<&Path
     #[cfg(unix)]
     std::os::unix::fs::symlink(&credentials, configuration.join("credentials"))?;
     #[cfg(not(unix))]
-    copy_tree(&credentials, &configuration.join("credentials"))?;
+    copy_credentials(&credentials, &configuration.join("credentials"))?;
     paths::ensure_private_dir(&directory.join("empty-skills"))?;
     let tools = if workspace.is_some() { "  - Read\n  - Glob\n  - Grep\n  - Edit\n  - Write" } else { "  - Read" };
     let profile = format!(
@@ -191,7 +200,7 @@ fn prepare_kimi(directory: &Path, authentication: &Path, workspace: Option<&Path
 /// Refreshed Kimi tokens must survive, because Windows ran on a copy.
 fn finish_kimi(directory: &Path, authentication: &Path) {
     if cfg!(windows) {
-        let _ = copy_tree(&directory.join("kimi-config").join("credentials"), &authentication.join("credentials"));
+        let _ = copy_credentials(&directory.join("kimi-config").join("credentials"), &authentication.join("credentials"));
     }
 }
 
@@ -252,7 +261,8 @@ fn kimi_answer(output: &[u8]) -> Option<String> {
 /// where the OS and assistant cannot keep edits inside the approved project.
 pub fn choose_confinement(engine: &Engine, agent: Agent, has_workspace: bool, landlock: bool) -> Result<Confinement> {
     if !has_workspace {
-        return Ok(Confinement::NoProjectAccess);
+        // Kimi reads its brief with a Read tool, which only Landlock can limit.
+        return Ok(if agent == Agent::Kimi && !landlock { Confinement::ToolLevel } else { Confinement::NoProjectAccess });
     }
     if !agent.is_native() {
         return Ok(Confinement::AppEnforced);
@@ -293,7 +303,59 @@ fn confined_program(engine: &Engine, program: &Path, arguments: Vec<String>, rea
     Ok((helper, wrapped))
 }
 
-/// Runs one assignment. `model` is the caller's resolved selection, if any.
+const WORKER_FOLDER_PREFIX: &str = "fawaly-worker-";
+const WORKER_FOLDER_OWNER: &str = "fawaly-owner.lock";
+
+/// A worker's private folder. The lock shows other engines it is still in use.
+struct WorkerFolder {
+    path: PathBuf,
+    owner: Option<std::fs::File>,
+}
+
+impl WorkerFolder {
+    fn create() -> Result<Self> {
+        let path = dunce::canonicalize(std::env::temp_dir())?.join(format!("{WORKER_FOLDER_PREFIX}{}", uuid::Uuid::new_v4()));
+        paths::ensure_private_dir(&path)?;
+        let owner = std::fs::File::create_new(path.join(WORKER_FOLDER_OWNER))?;
+        owner.try_lock().map_err(|_| Error::invalid("The worker's private folder could not be reserved."))?;
+        Ok(Self { path, owner: Some(owner) })
+    }
+}
+
+impl Drop for WorkerFolder {
+    fn drop(&mut self) {
+        // Windows cannot delete a folder holding an open file.
+        drop(self.owner.take());
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+/// Removes folders a killed engine left behind, which can hold a copy of
+/// credentials. A folder whose lock is still held belongs to a live engine.
+pub fn sweep_stale_worker_folders() {
+    if let Ok(temporary) = dunce::canonicalize(std::env::temp_dir()) {
+        sweep_worker_folders_in(&temporary);
+    }
+}
+
+fn sweep_worker_folders_in(parent: &Path) {
+    let Ok(entries) = std::fs::read_dir(parent) else { return };
+    for entry in entries.flatten() {
+        let is_folder = entry.file_type().is_ok_and(|kind| kind.is_dir());
+        if !is_folder || !entry.file_name().to_string_lossy().starts_with(WORKER_FOLDER_PREFIX) {
+            continue;
+        }
+        let Ok(owner) = std::fs::File::open(entry.path().join(WORKER_FOLDER_OWNER)) else { continue };
+        if owner.try_lock().is_ok() {
+            drop(owner);
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
+/// Runs one assignment. An `Err` means nothing was launched. Once a worker has
+/// been launched the result is `Ok`, with any failure in `answer`.
+/// `model` is the caller's resolved selection, if any.
 pub fn run(engine: &Engine, agent: Agent, prompt: &str, workspace: Option<&Path>, timeout: u64, stop_file: Option<PathBuf>, model: Option<String>) -> Result<WorkerOutcome> {
     if prompt.is_empty() || prompt.len() > PROMPT_LIMIT {
         return Err(Error::invalid("The worker brief must be 1 byte to 120 KB."));
@@ -307,9 +369,12 @@ pub fn run(engine: &Engine, agent: Agent, prompt: &str, workspace: Option<&Path>
     let prompt = skills::enrich_prompt(prompt, authorized.as_deref(), &engine.home);
     let landlock = confine::landlock_available(engine.helper.as_deref());
     let confinement = choose_confinement(engine, agent, authorized.is_some(), landlock)?;
-    let before = authorized.as_deref().map(confine::git_manifest);
-    let answer = if agent.is_native() {
-        run_native(engine, agent, &prompt, authorized.as_deref(), timeout, stop_file, model, landlock)
+    enum Launch {
+        Native(NativeLaunch),
+        Api(ApiAssistant, Option<PathBuf>),
+    }
+    let launch = if agent.is_native() {
+        Launch::Native(prepare_native(engine, agent, &prompt, authorized.as_deref(), timeout, stop_file, model, landlock)?)
     } else {
         let mut assistant = ApiAssistantStore::new(&engine.root)
             .load(agent)?
@@ -318,32 +383,44 @@ pub fn run(engine: &Engine, agent: Agent, prompt: &str, workspace: Option<&Path>
         if let Some(model) = model {
             assistant.model = model;
         }
-        ApiWorker { engine, transport: engine.transport.clone(), stop_file }.run(&assistant, &prompt, authorized.as_deref(), timeout)
+        assistant.validate()?;
+        if assistant.model.is_empty() {
+            return Err(Error::invalid("Choose a model for this assistant first."));
+        }
+        Launch::Api(assistant, stop_file)
     };
-    let git_changes = match (&before, authorized.as_deref()) {
-        (Some(before), Some(path)) => confine::manifest_changes(before, &confine::git_manifest(path)),
-        _ => Vec::new(),
+    let before = authorized.as_deref().map(confine::git_manifest);
+    let answer = match launch {
+        Launch::Native(launch) => run_native(engine, agent, launch),
+        Launch::Api(assistant, stop_file) => ApiWorker { engine, transport: engine.transport.clone(), stop_file }.run(&assistant, &prompt, authorized.as_deref(), timeout),
     };
-    Ok(WorkerOutcome { answer: answer?, confinement, git_changes })
+    // Taken only now, when the worker and anything it started have ended.
+    let (git_changes, git_scan_incomplete) = match (&before, authorized.as_deref()) {
+        (Some(before), Some(path)) => {
+            let after = confine::git_manifest(path);
+            (confine::manifest_changes(before, &after), confine::manifest_incomplete(before, &after))
+        }
+        _ => (Vec::new(), false),
+    };
+    Ok(WorkerOutcome { answer, confinement, git_changes, git_scan_incomplete })
+}
+
+struct NativeLaunch {
+    spec: WorkerSpec,
+    kimi_home: Option<PathBuf>,
+    _folder: WorkerFolder,
 }
 
 #[allow(clippy::too_many_arguments)]
-fn run_native(engine: &Engine, agent: Agent, prompt: &str, workspace: Option<&Path>, timeout: u64, stop_file: Option<PathBuf>, model: Option<String>, landlock: bool) -> Result<String> {
+fn prepare_native(engine: &Engine, agent: Agent, prompt: &str, workspace: Option<&Path>, timeout: u64, stop_file: Option<PathBuf>, model: Option<String>, landlock: bool) -> Result<NativeLaunch> {
     let executable = engine.executable(agent).ok_or_else(|| Error::invalid(format!("{} CLI is not installed.", agent.label())))?;
     if !engine.is_ready(agent) {
         return Err(Error::invalid(format!("Open Services in Sudo Interns and connect {}.", agent.label())));
     }
     let claude_home = (agent == Agent::Claude && engine.has_sign_in(Agent::Claude)).then(|| engine.auth_dir(Agent::Claude));
     let token = if agent == Agent::Claude && claude_home.is_none() { engine.secrets.get(CLAUDE_TOKEN_ACCOUNT)? } else { None };
-    let directory = dunce::canonicalize(std::env::temp_dir())?.join(format!("fawaly-worker-{}", uuid::Uuid::new_v4()));
-    paths::ensure_private_dir(&directory)?;
-    struct Cleanup(PathBuf);
-    impl Drop for Cleanup {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-    let _cleanup = Cleanup(directory.clone());
+    let folder = WorkerFolder::create()?;
+    let directory = folder.path.clone();
     let kimi_home = (agent == Agent::Kimi).then(|| engine.auth_dir(Agent::Kimi));
     if let Some(home) = &kimi_home {
         prepare_kimi(&directory, home, workspace)?;
@@ -373,19 +450,20 @@ fn run_native(engine: &Engine, agent: Agent, prompt: &str, workspace: Option<&Pa
     } else {
         (executable, invocation.arguments)
     };
-    let spec = WorkerSpec { program, arguments, environment: invocation.environment, directory: directory.clone(), prompt: worker_prompt, timeout, stop_file };
-    let output = match process::run_worker(&spec) {
-        Ok(output) => output,
-        Err(Error::WorkerAuthentication) => {
-            let _ = engine.set_requires_sign_in(agent, true);
-            return Err(Error::WorkerAuthentication);
-        }
-        Err(error) => return Err(error),
-    };
-    if let Some(home) = &kimi_home {
-        finish_kimi(&directory, home);
+    let spec = WorkerSpec { program, arguments, environment: invocation.environment, directory, prompt: worker_prompt, timeout, stop_file };
+    Ok(NativeLaunch { spec, kimi_home, _folder: folder })
+}
+
+fn run_native(engine: &Engine, agent: Agent, launch: NativeLaunch) -> Result<String> {
+    let output = process::run_worker(&launch.spec);
+    // Before any error returns: a job that fails can still have refreshed a token.
+    if let Some(home) = &launch.kimi_home {
+        finish_kimi(&launch.spec.directory, home);
     }
-    parse_answer(agent, &directory, &output)
+    if matches!(output, Err(Error::WorkerAuthentication)) {
+        let _ = engine.set_requires_sign_in(agent, true);
+    }
+    parse_answer(agent, &launch.spec.directory, &output?)
 }
 
 #[cfg(test)]
@@ -462,7 +540,7 @@ mod tests {
     #[test]
     fn project_access_is_never_silently_unconfined() {
         let (_root, engine) = engine();
-        assert_eq!(choose_confinement(&engine, Agent::Kimi, false, false).unwrap(), Confinement::NoProjectAccess);
+        assert_eq!(choose_confinement(&engine, Agent::Claude, false, false).unwrap(), Confinement::NoProjectAccess);
         assert_eq!(choose_confinement(&engine, Agent::Deepseek, true, false).unwrap(), Confinement::AppEnforced);
         if cfg!(target_os = "linux") {
             assert!(choose_confinement(&engine, Agent::Claude, true, false).is_err());
@@ -472,5 +550,86 @@ mod tests {
             assert!(choose_confinement(&engine, Agent::Kimi, true, false).is_err());
             assert_eq!(choose_confinement(&engine, Agent::Claude, true, false).unwrap(), Confinement::ToolLevel);
         }
+    }
+
+    #[test]
+    fn text_only_kimi_is_not_called_project_free_without_an_os_boundary() {
+        let (_root, engine) = engine();
+        assert_eq!(choose_confinement(&engine, Agent::Kimi, false, false).unwrap(), Confinement::ToolLevel);
+        assert_eq!(choose_confinement(&engine, Agent::Kimi, false, true).unwrap(), Confinement::NoProjectAccess);
+    }
+
+    /// An approved project with a local assistant whose transport is the test.
+    fn local_worker(transport: crate::http::Transport) -> (tempfile::TempDir, Engine, PathBuf) {
+        let base = tempfile::tempdir().unwrap();
+        let home = dunce::canonicalize(base.path()).unwrap().join("home");
+        let project = home.join("code/demo");
+        std::fs::create_dir_all(project.join(".git/hooks")).unwrap();
+        let mut engine = Engine::with(home.join(".local/share/data"), home, Arc::new(MemorySecrets::default()));
+        engine.transport = transport;
+        engine.allow_workspace(&project.to_string_lossy()).unwrap();
+        let mut assistant = ApiAssistant::preset(Agent::Ollama);
+        assistant.model = "local".into();
+        ApiAssistantStore::new(&engine.root).save(assistant).unwrap();
+        (base, engine, project)
+    }
+
+    #[test]
+    fn a_failed_worker_still_reports_git_changes_and_its_limit() {
+        let tampered = Arc::new(std::sync::Mutex::new(None::<PathBuf>));
+        let target = tampered.clone();
+        let transport: crate::http::Transport = Arc::new(move |_| {
+            std::fs::write(target.lock().unwrap().as_ref().unwrap(), "evil").unwrap();
+            Err(Error::invalid("The service could not be reached."))
+        });
+        let (_base, engine, project) = local_worker(transport);
+        *tampered.lock().unwrap() = Some(project.join(".git/hooks/pre-commit"));
+        let outcome = run(&engine, Agent::Ollama, "brief", Some(&project), 30, None, None).unwrap();
+        assert!(outcome.answer.is_err());
+        assert_eq!(outcome.confinement, Confinement::AppEnforced);
+        assert_eq!(outcome.git_changes, vec!["added .git/hooks/pre-commit".to_string()]);
+    }
+
+    #[test]
+    fn nothing_launched_is_an_error_rather_than_an_outcome() {
+        let (_root, engine) = engine();
+        assert!(run(&engine, Agent::Ollama, "brief", None, 30, None, None).is_err(), "not connected");
+        assert!(run(&engine, Agent::Claude, "brief", None, 30, None, None).is_err(), "not installed");
+    }
+
+    #[test]
+    fn saved_credentials_survive_a_half_written_refresh() {
+        let folder = tempfile::tempdir().unwrap();
+        let (source, target) = (folder.path().join("from"), folder.path().join("to"));
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("kimi.json"), r#"{"token":"good"}"#).unwrap();
+        std::fs::write(target.join("other.json"), r#"{"token":"old"}"#).unwrap();
+        std::fs::write(source.join("kimi.json"), r#"{"token":"#).unwrap();
+        std::fs::write(source.join("other.json"), r#"{"token":"new"}"#).unwrap();
+        copy_credentials(&source, &target).unwrap();
+        assert_eq!(std::fs::read_to_string(target.join("kimi.json")).unwrap(), r#"{"token":"good"}"#);
+        assert_eq!(std::fs::read_to_string(target.join("other.json")).unwrap(), r#"{"token":"new"}"#);
+    }
+
+    #[test]
+    fn only_abandoned_worker_folders_are_swept() {
+        let parent = tempfile::tempdir().unwrap();
+        let abandoned = parent.path().join("fawaly-worker-dead");
+        let live = parent.path().join("fawaly-worker-live");
+        let unmarked = parent.path().join("fawaly-worker-unmarked");
+        let other = parent.path().join("something-else");
+        for folder in [&abandoned, &live, &unmarked, &other] {
+            std::fs::create_dir_all(folder).unwrap();
+        }
+        std::fs::File::create(abandoned.join(WORKER_FOLDER_OWNER)).unwrap();
+        std::fs::File::create(other.join(WORKER_FOLDER_OWNER)).unwrap();
+        let held = std::fs::File::create(live.join(WORKER_FOLDER_OWNER)).unwrap();
+        held.try_lock().unwrap();
+        sweep_worker_folders_in(parent.path());
+        assert!(!abandoned.exists());
+        assert!(live.exists(), "a live engine's folder stays");
+        assert!(unmarked.exists(), "a folder that may be starting up stays");
+        assert!(other.exists());
     }
 }

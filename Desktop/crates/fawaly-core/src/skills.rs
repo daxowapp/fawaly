@@ -1,3 +1,4 @@
+use crate::engine::Engine;
 use crate::http::{HttpRequest, Transport};
 use crate::workspace::{digest, ApiWorkspace, FILE_LIMIT};
 use crate::{Error, Result};
@@ -191,10 +192,24 @@ pub struct ProjectSkills {
 }
 
 const GLOBAL_STORAGE: &str = ".fawaly/skills-global";
+/// How `Engine::approved_workspace` reports a valid folder that is not approved.
+const NOT_APPROVED_PREFIX: &str = "Workspace access is off.";
 
 impl ProjectSkills {
     pub fn project(directory: &Path, home: &Path) -> Self {
         Self { directory: directory.to_path_buf(), scope: Scope::Project, home: home.to_path_buf() }
+    }
+
+    /// Applies the same folder rules as approving a project, but changes nothing.
+    /// Looking at skills must never grant workers access; only choosing a project does.
+    pub fn validated_project(engine: &Engine, directory: &str) -> Result<Self> {
+        let folder = match engine.approved_workspace(directory) {
+            Ok(folder) => folder,
+            // The folder passed every check and is merely not approved.
+            Err(Error::Invalid(message)) if message.starts_with(NOT_APPROVED_PREFIX) => dunce::canonicalize(directory)?,
+            Err(error) => return Err(error),
+        };
+        Ok(Self::project(&folder, &engine.home))
     }
 
     pub fn global(home: &Path) -> Self {
@@ -588,6 +603,45 @@ mod tests {
         std::fs::create_dir_all(&project).unwrap();
         std::fs::create_dir_all(&home).unwrap();
         Setup { _base: base, project, home }
+    }
+
+    fn engine_with_project() -> (tempfile::TempDir, Engine, String) {
+        let base = tempfile::tempdir().unwrap();
+        let home = dunce::canonicalize(base.path()).unwrap().join("home");
+        std::fs::create_dir_all(home.join("code/project")).unwrap();
+        let root = home.join(".local/share/SudoInterns");
+        std::fs::create_dir_all(&root).unwrap();
+        let project = home.join("code/project").to_string_lossy().to_string();
+        (base, Engine::with(root, home, Arc::new(crate::secrets::MemorySecrets::default())), project)
+    }
+
+    #[test]
+    fn browsing_a_folder_for_skills_never_approves_it() {
+        let (_base, engine, project) = engine_with_project();
+        let target = ProjectSkills::validated_project(&engine, &project).unwrap();
+        assert_eq!(target.directory, Path::new(&project));
+        assert!(engine.workspaces().unwrap().is_empty());
+        assert!(engine.approved_workspace(&project).is_err());
+    }
+
+    #[test]
+    fn a_revoked_folder_stays_revoked_after_browsing() {
+        let (_base, engine, project) = engine_with_project();
+        engine.allow_workspace(&project).unwrap();
+        assert!(ProjectSkills::validated_project(&engine, &project).is_ok());
+        engine.deny_workspace(&project).unwrap();
+        assert!(ProjectSkills::validated_project(&engine, &project).is_ok());
+        assert!(engine.workspaces().unwrap().is_empty());
+    }
+
+    #[test]
+    fn folders_that_cannot_be_approved_cannot_be_browsed() {
+        let (_base, engine, project) = engine_with_project();
+        let home = engine.home.to_string_lossy().to_string();
+        let missing = format!("{project}/missing");
+        for folder in [home.as_str(), missing.as_str(), "relative/path"] {
+            assert!(ProjectSkills::validated_project(&engine, folder).is_err(), "{folder}");
+        }
     }
 
     #[test]
