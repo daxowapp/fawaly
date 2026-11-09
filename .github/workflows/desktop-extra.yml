@@ -1,0 +1,426 @@
+# Paths that need a real Windows or Linux machine and already-built packages:
+# NSIS upgrade and cancel, the MSI on its own, and the real network services.
+# Runs only when the test/extra-checks branch is pushed. It uses no secrets.
+name: Desktop extra checks
+on:
+  push:
+    branches: [test/extra-checks]
+permissions:
+  contents: read
+  actions: read
+env:
+  PACKAGES_RUN: "42626337009"
+  TAURI_DRIVER_VERSION: "2.1.0"
+jobs:
+  exe-upgrade-and-cancel:
+    name: EXE upgrade and cancel (windows-2022)
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sudo-interns-windows-x64
+          path: packages
+          run-id: ${{ env.PACKAGES_RUN }}
+          github-token: ${{ github.token }}
+      - name: Install the app and UI test tools
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem packages -Recurse -Filter *setup.exe | Select-Object -First 1
+          if (-not $installer) { throw "no setup.exe in the packages" }
+          Start-Process $installer.FullName -ArgumentList "/S" -Wait
+          $app = "$env:LOCALAPPDATA\Sudo Interns\sudo-interns.exe"
+          $uninstaller = "$env:LOCALAPPDATA\Sudo Interns\uninstall.exe"
+          if (-not (Test-Path $app)) { throw "not installed at $app" }
+          if (-not (Test-Path $uninstaller)) { throw "no uninstaller at $uninstaller" }
+          "SETUP_EXE=$($installer.FullName)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "APP_EXE=$app" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "UNINSTALL_EXE=$uninstaller" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          rustup toolchain install stable --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw "rustup failed: $LASTEXITCODE" }
+          cargo install tauri-driver --version "$env:TAURI_DRIVER_VERSION" --locked
+          if ($LASTEXITCODE -ne 0) { throw "installing tauri-driver failed: $LASTEXITCODE" }
+          $id = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $keys = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$id", "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$id", "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$id"
+          $version = $keys | ForEach-Object { (Get-ItemProperty $_ -ErrorAction SilentlyContinue).pv } | Where-Object { $_ } | Select-Object -First 1
+          if (-not $version) { throw "WebView2 runtime version not found" }
+          Invoke-WebRequest "https://msedgedriver.microsoft.com/$version/edgedriver_win64.zip" -OutFile "$env:RUNNER_TEMP\edgedriver.zip"
+          Expand-Archive "$env:RUNNER_TEMP\edgedriver.zip" "$env:RUNNER_TEMP\edgedriver"
+          "EDGE_DRIVER=$env:RUNNER_TEMP\edgedriver\msedgedriver.exe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Register the team in the real Codex config through onboarding
+        shell: pwsh
+        env:
+          E2E_SCREENSHOTS: ${{ github.workspace }}/e2e-screenshots
+        run: |
+          $driver = Start-Process tauri-driver -ArgumentList "--native-driver","$env:EDGE_DRIVER" -PassThru
+          Start-Sleep 3
+          python Scripts/desktop_e2e.py onboarding $env:APP_EXE
+          $code = $LASTEXITCODE
+          Stop-Process $driver -ErrorAction SilentlyContinue
+          if ($code -ne 0) { throw "onboarding failed with exit code $code" }
+          $config = Get-Content "$HOME\.codex\config.toml" -Raw
+          if ($config -notmatch 'mcp_servers\.fawaly_team') { throw "onboarding did not register the team:`n$config" }
+          if ($config -notmatch 'mcp_servers\.keep_me') { throw "keep_me is missing after onboarding:`n$config" }
+          "team and keep_me are both registered"
+
+      # /UPDATE is passed by hand here, which no real upgrade does: the setup wizard
+      # runs the uninstaller without it, and a silent setup overwrites in place. So
+      # this shows only that the hook honours /UPDATE. The next step covers an upgrade.
+      - name: An uninstall with /UPDATE keeps the registration
+        shell: pwsh
+        run: |
+          if (-not (Test-Path $env:APP_EXE)) { throw "the app must be installed before the /UPDATE uninstall" }
+          Start-Process $env:UNINSTALL_EXE -ArgumentList "/S","/UPDATE" -Wait
+          # NSIS reruns the uninstaller from a temporary copy, so wait for that copy too.
+          $deadline = (Get-Date).AddMinutes(2)
+          while (((Test-Path $env:APP_EXE) -or (Get-Process -Name 'Un','Un_*','Au_*' -ErrorAction SilentlyContinue)) -and (Get-Date) -lt $deadline) { Start-Sleep 1 }
+          if (Test-Path $env:APP_EXE) { throw "the /UPDATE uninstall did not remove the app, so it did not really run" }
+          if (Get-Process -Name 'Un','Un_*','Au_*' -ErrorAction SilentlyContinue) { throw "the /UPDATE uninstall was still running after two minutes" }
+          "the /UPDATE uninstall ran and removed the app files"
+          $config = Get-Content "$HOME\.codex\config.toml" -Raw
+          if ($config -notmatch 'mcp_servers\.fawaly_team') { throw "the /UPDATE uninstall removed the team registration:`n$config" }
+          if ($config -notmatch 'mcp_servers\.keep_me') { throw "the /UPDATE uninstall removed keep_me:`n$config" }
+          "registration survived the /UPDATE uninstall"
+          Start-Process $env:SETUP_EXE -ArgumentList "/S" -Wait
+          if (-not (Test-Path $env:APP_EXE)) { throw "the reinstall did not restore the app" }
+          if (-not (Test-Path $env:UNINSTALL_EXE)) { throw "the reinstall did not restore the uninstaller" }
+          "reinstalled"
+
+      # An upgrade through the setup wizard runs the old uninstaller without /UPDATE,
+      # so the hook disconnects and the new version's first launch has to reconnect.
+      # Only one version is built, so an aged marker stands in for the older version.
+      - name: The first launch after a wizard-style upgrade reconnects the team
+        shell: pwsh
+        run: |
+          if (-not (Test-Path $env:APP_EXE)) { throw "the app must be installed before this upgrade" }
+          $marker = "$env:APPDATA\SudoInterns\team-link.marker"
+          if (-not (Test-Path $marker)) { throw "onboarding left no marker at $marker, so nothing could reconnect" }
+          $version = Get-Content $marker -Raw
+          if (-not $version) { throw "the marker at $marker is empty" }
+          "the marker records version $version"
+          $config = Get-Content "$HOME\.codex\config.toml" -Raw
+          if ($config -notmatch 'mcp_servers\.fawaly_team') { throw "the registration must be present before this upgrade:`n$config" }
+
+          Start-Process $env:UNINSTALL_EXE -ArgumentList "/S" -Wait
+          $deadline = (Get-Date).AddMinutes(2)
+          while (((Test-Path $env:APP_EXE) -or (Get-Process -Name 'Un','Un_*','Au_*' -ErrorAction SilentlyContinue)) -and (Get-Date) -lt $deadline) { Start-Sleep 1 }
+          if (Test-Path $env:APP_EXE) { throw "the uninstall did not remove the app" }
+          $deadline = (Get-Date).AddSeconds(90)
+          do {
+            $config = Get-Content "$HOME\.codex\config.toml" -Raw
+            if ($config -notmatch 'mcp_servers\.fawaly_team') { break }
+            Start-Sleep 2
+          } while ((Get-Date) -lt $deadline)
+          if ($config -match 'mcp_servers\.fawaly_team') { throw "the uninstall without /UPDATE did not disconnect, so a reconnect would prove nothing:`n$config" }
+          if ($config -notmatch 'mcp_servers\.keep_me') { throw "the uninstall removed keep_me:`n$config" }
+          if (-not (Test-Path $marker)) { throw "the uninstall removed the marker, so the next version could not reconnect" }
+          "the uninstall disconnected and left the marker"
+
+          Set-Content $marker "0.0.1-older" -NoNewline
+          Start-Process $env:SETUP_EXE -ArgumentList "/S" -Wait
+          if (-not (Test-Path $env:APP_EXE)) { throw "the reinstall did not restore the app" }
+          $config = Get-Content "$HOME\.codex\config.toml" -Raw
+          if ($config -match 'mcp_servers\.fawaly_team') { throw "the team was registered before the app launched:`n$config" }
+
+          $app = Start-Process $env:APP_EXE -PassThru
+          $deadline = (Get-Date).AddMinutes(2)
+          do {
+            if ($app.HasExited) { throw "the app exited with $($app.ExitCode) before it reconnected" }
+            $config = Get-Content "$HOME\.codex\config.toml" -Raw -ErrorAction SilentlyContinue
+            $recorded = Get-Content $marker -Raw -ErrorAction SilentlyContinue
+            if (($config -match 'mcp_servers\.fawaly_team') -and ($recorded -eq $version)) { break }
+            Start-Sleep 2
+          } while ((Get-Date) -lt $deadline)
+          if ($config -notmatch 'mcp_servers\.fawaly_team') { throw "the first launch did not reconnect the team:`n$config" }
+          if ($config -notmatch 'mcp_servers\.keep_me') { throw "the reconnect removed keep_me:`n$config" }
+          if ($recorded -ne $version) { throw "the app did not record its version after reconnecting: '$recorded'" }
+          "the first launch reconnected the team and recorded version $recorded"
+
+          Stop-Process -Id $app.Id -Force
+          $deadline = (Get-Date).AddSeconds(30)
+          while ((Get-Process -Name 'sudo-interns' -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep 1 }
+          if (Get-Process -Name 'sudo-interns' -ErrorAction SilentlyContinue) { throw "the app did not close" }
+
+      # Windows PowerShell, because UIAutomationClient always ships with its .NET.
+      - name: Cancel at the app-running prompt changes nothing
+        shell: powershell
+        run: |
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
+          $root = [System.Windows.Automation.AutomationElement]::RootElement
+          $children = [System.Windows.Automation.TreeScope]::Children
+          $descendants = [System.Windows.Automation.TreeScope]::Descendants
+          $anything = [System.Windows.Automation.Condition]::TrueCondition
+          $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+          $classProperty = [System.Windows.Automation.AutomationElement]::ClassNameProperty
+          $typeProperty = [System.Windows.Automation.AutomationElement]::ControlTypeProperty
+          $dialogClass = New-Object System.Windows.Automation.PropertyCondition($classProperty, '#32770')
+          $buttonType = New-Object System.Windows.Automation.PropertyCondition($typeProperty, [System.Windows.Automation.ControlType]::Button)
+          $textType = New-Object System.Windows.Automation.PropertyCondition($typeProperty, [System.Windows.Automation.ControlType]::Text)
+          $comboType = New-Object System.Windows.Automation.PropertyCondition($typeProperty, [System.Windows.Automation.ControlType]::ComboBox)
+
+          # NSIS windows and message boxes are all class #32770. A message box can
+          # sit at the top level or under its owner, depending on the UIA provider.
+          function Get-Dialogs {
+            foreach ($top in $root.FindAll($children, $anything)) {
+              try {
+                if ($top.Current.ClassName -eq '#32770') {
+                  $top
+                  foreach ($inner in $top.FindAll($descendants, $dialogClass)) { $inner }
+                }
+              } catch { Write-Host "skipped a window: $($_.Exception.Message)" }
+            }
+          }
+          function Get-Buttons($dialog) {
+            $map = @{}
+            foreach ($button in $dialog.FindAll($descendants, $buttonType)) {
+              # The title bar has its own Close, which would hide the wizard's Close.
+              $parent = $walker.GetParent($button)
+              if ($parent.Current.ControlType.ProgrammaticName -eq 'ControlType.TitleBar') { continue }
+              $map[($button.Current.Name -replace '&', '').Trim()] = $button
+            }
+            $map
+          }
+          function Get-Texts($dialog) {
+            foreach ($text in $dialog.FindAll($descendants, $textType)) { $text.Current.Name }
+          }
+          # The wizard holds its page as a nested dialog; a message box holds none.
+          # Only a leaf is trusted for OK and Cancel, as the wizard has its own Cancel.
+          function Test-Leaf($dialog) { $null -eq $dialog.FindFirst($descendants, $dialogClass) }
+          function Press($button, $reason) {
+            Write-Host "pressing '$($button.Current.Name)': $reason"
+            $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+          }
+          function Show-Windows($heading) {
+            Write-Host "--- $heading"
+            foreach ($top in $root.FindAll($children, $anything)) {
+              try { Write-Host "window: name='$($top.Current.Name)' class='$($top.Current.ClassName)' pid=$($top.Current.ProcessId)" } catch { Write-Host "window: closed while reading it" }
+            }
+            foreach ($dialog in @(Get-Dialogs)) {
+              try {
+                $labels = (Get-Buttons $dialog).Keys -join ', '
+                $words = @(Get-Texts $dialog) -join ' | '
+                Write-Host "dialog: name='$($dialog.Current.Name)' pid=$($dialog.Current.ProcessId) leaf=$(Test-Leaf $dialog) buttons=[$labels] text=[$words]"
+              } catch { Write-Host "dialog: closed while reading it" }
+            }
+            Get-Process -Name 'sudo-interns','Un','Un_*','Au_*' -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "process: $($_.Name) id=$($_.Id)" }
+          }
+
+          $appProcess = Start-Process $env:APP_EXE -PassThru
+          Start-Sleep 12
+          if ($appProcess.HasExited) { throw "the app exited with $($appProcess.ExitCode), so the prompt cannot be tested" }
+          if (-not (Get-Process -Name 'sudo-interns' -ErrorAction SilentlyContinue)) { throw "no sudo-interns process is running" }
+          "app is running as process $($appProcess.Id)"
+
+          # No /S and no /P: CheckIfAppIsRunning skips the prompt in those modes.
+          Start-Process $env:UNINSTALL_EXE
+
+          $prompt = $null
+          $pressedUninstall = $false
+          $wizardPid = 0
+          $deadline = (Get-Date).AddMinutes(3)
+          $nextReport = Get-Date
+          while (-not $prompt) {
+            if ((Get-Date) -gt $deadline) {
+              Show-Windows 'windows when the prompt timed out'
+              throw "the app-running prompt never appeared (pressed Uninstall: $pressedUninstall)"
+            }
+            if ((Get-Date) -ge $nextReport) {
+              Show-Windows 'waiting for the app-running prompt'
+              $nextReport = (Get-Date).AddSeconds(15)
+            }
+            foreach ($dialog in @(Get-Dialogs)) {
+              try {
+                $buttons = Get-Buttons $dialog
+                if (-not $pressedUninstall -and $buttons.ContainsKey('Uninstall') -and $buttons['Uninstall'].Current.IsEnabled) {
+                  $wizardPid = $dialog.Current.ProcessId
+                  Press $buttons['Uninstall'] 'start the uninstall from the confirm page'
+                  $pressedUninstall = $true
+                  continue
+                }
+                if (-not (Test-Leaf $dialog)) { continue }
+                $running = @(Get-Texts $dialog) -match 'is running'
+                if ($pressedUninstall -and $running -and $buttons.ContainsKey('OK') -and $buttons.ContainsKey('Cancel')) {
+                  Show-Windows 'the app-running prompt is showing'
+                  $prompt = $running -join ' '
+                  Press $buttons['Cancel'] 'refuse to close the running app'
+                  break
+                }
+                # displayLanguageSelector is on, so the uninstaller may ask first.
+                if ($null -ne $dialog.FindFirst($descendants, $comboType) -and $buttons.ContainsKey('OK')) {
+                  Press $buttons['OK'] 'accept the language selector'
+                }
+              } catch { Write-Host "retrying: $($_.Exception.Message)" }
+            }
+            Start-Sleep -Milliseconds 300
+          }
+          "the prompt was seen: $prompt"
+
+          # After the Abort the wizard stays open with Close. OK is pressed only on
+          # a message box without Cancel, so the running-app prompt can never get it.
+          $deadline = (Get-Date).AddMinutes(2)
+          $nextReport = Get-Date
+          while (Get-Process -Id $wizardPid -ErrorAction SilentlyContinue) {
+            if ((Get-Date) -gt $deadline) {
+              Show-Windows 'windows when the wizard failed to close'
+              throw "the uninstall wizard did not close after Cancel"
+            }
+            if ((Get-Date) -ge $nextReport) {
+              Show-Windows 'closing the wizard'
+              $nextReport = (Get-Date).AddSeconds(15)
+            }
+            foreach ($dialog in @(Get-Dialogs)) {
+              try {
+                if ($dialog.Current.ProcessId -ne $wizardPid) { continue }
+                $buttons = Get-Buttons $dialog
+                if ($buttons.ContainsKey('Close') -and $buttons['Close'].Current.IsEnabled) {
+                  Press $buttons['Close'] 'close the stopped wizard'
+                } elseif (Test-Leaf $dialog) {
+                  if ($buttons.ContainsKey('Cancel')) {
+                    if ($buttons['Cancel'].Current.IsEnabled) { Press $buttons['Cancel'] 'dismiss a remaining dialog' }
+                  } elseif ($buttons.ContainsKey('OK')) {
+                    Press $buttons['OK'] 'dismiss a remaining notice'
+                  }
+                } elseif ($buttons.ContainsKey('Cancel') -and $buttons['Cancel'].Current.IsEnabled) {
+                  Press $buttons['Cancel'] 'leave the wizard'
+                }
+              } catch { Write-Host "retrying: $($_.Exception.Message)" }
+            }
+            Start-Sleep -Milliseconds 500
+          }
+          Show-Windows 'after the wizard closed'
+
+          if (-not $prompt) { throw "the app-running prompt was not seen" }
+          if (-not $pressedUninstall) { throw "the Uninstall button was never pressed" }
+          if (-not (Test-Path $env:APP_EXE)) { throw "Cancel removed the app" }
+          if (-not (Test-Path $env:UNINSTALL_EXE)) { throw "Cancel removed the uninstaller" }
+          if (-not (Get-Process -Id $appProcess.Id -ErrorAction SilentlyContinue)) { throw "Cancel closed the running app" }
+          $config = Get-Content "$HOME\.codex\config.toml" -Raw
+          if ($config -notmatch 'mcp_servers\.fawaly_team') { throw "Cancel removed the team registration:`n$config" }
+          if ($config -notmatch 'mcp_servers\.keep_me') { throw "Cancel removed keep_me:`n$config" }
+          "after Cancel: app files, running app, registration and keep_me are all intact"
+
+          Get-Process -Name 'sudo-interns' -ErrorAction SilentlyContinue | Stop-Process -Force
+          $deadline = (Get-Date).AddSeconds(30)
+          while ((Get-Process -Name 'sudo-interns' -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep 1 }
+          if (Get-Process -Name 'sudo-interns' -ErrorAction SilentlyContinue) { throw "the app did not close" }
+          "app closed"
+
+      - name: A normal uninstall still disconnects
+        shell: pwsh
+        run: |
+          if (-not (Test-Path $env:APP_EXE)) { throw "the app must be installed before this uninstall" }
+          if (-not (Test-Path "$env:APPDATA\SudoInterns\bin\sudo-interns-engine.exe")) { throw "the launcher that disconnects is missing" }
+          $config = Get-Content "$HOME\.codex\config.toml" -Raw
+          if ($config -notmatch 'mcp_servers\.fawaly_team') { throw "the registration must be present before this uninstall:`n$config" }
+          Start-Process $env:UNINSTALL_EXE -ArgumentList "/S" -Wait
+          $deadline = (Get-Date).AddMinutes(2)
+          while (((Test-Path $env:APP_EXE) -or (Get-Process -Name 'Un','Un_*','Au_*' -ErrorAction SilentlyContinue)) -and (Get-Date) -lt $deadline) { Start-Sleep 1 }
+          if (Test-Path $env:APP_EXE) { throw "the uninstall did not remove the app" }
+          # The disconnect hook runs after the files are gone.
+          $deadline = (Get-Date).AddSeconds(90)
+          do {
+            $config = Get-Content "$HOME\.codex\config.toml" -Raw
+            if ($config -notmatch 'mcp_servers\.fawaly_team') { break }
+            Start-Sleep 2
+          } while ((Get-Date) -lt $deadline)
+          if ($config -match 'mcp_servers\.fawaly_team') { throw "the team registration remains after uninstall:`n$config" }
+          if ($config -notmatch 'mcp_servers\.keep_me') { throw "uninstall removed keep_me:`n$config" }
+          "registration removed; keep_me kept"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: extra-exe-screenshots
+          path: e2e-screenshots
+          if-no-files-found: ignore
+
+  msi-clean-machine:
+    name: MSI on a clean machine (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: windows-2022, artifact: windows-x64 }
+          - { runner: windows-2025, artifact: windows-x64 }
+          - { runner: windows-11-arm, artifact: windows-arm64 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sudo-interns-${{ matrix.artifact }}
+          path: packages
+          run-id: ${{ env.PACKAGES_RUN }}
+          github-token: ${{ github.token }}
+      - name: Install, smoke test and remove the MSI
+        shell: pwsh
+        run: |
+          $folders = "$env:ProgramFiles","${env:ProgramFiles(x86)}","$env:LOCALAPPDATA"
+          if (Get-ChildItem $folders -Recurse -Filter sudo-interns.exe -ErrorAction SilentlyContinue) { throw "the machine is not clean: the app is already installed" }
+          $msi = (Get-ChildItem packages -Recurse -Filter *.msi | Select-Object -First 1).FullName
+          if (-not $msi) { throw "no MSI in the packages" }
+          $logs = "$env:GITHUB_WORKSPACE\msi-logs"
+          New-Item -ItemType Directory -Force $logs | Out-Null
+
+          $process = Start-Process msiexec -ArgumentList "/i","`"$msi`"","/qn","/norestart","/l*v","`"$logs\install.log`"" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "msi install failed: $($process.ExitCode)" }
+          if (-not (Test-Path "$logs\install.log")) { throw "msiexec wrote no install log" }
+          $app = Get-ChildItem $folders -Recurse -Filter sudo-interns.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $app) { throw "msi did not install the app" }
+          $engine = Join-Path $app.DirectoryName "sudo-interns-engine.exe"
+          if (-not (Test-Path $engine)) { throw "msi did not install the engine beside the app" }
+          "MSI installed to $($app.FullName)"
+
+          python Scripts/desktop_e2e.py smoke $app.FullName
+          if ($LASTEXITCODE -ne 0) { throw "smoke failed with exit code $LASTEXITCODE" }
+
+          $process = Start-Process msiexec -ArgumentList "/x","`"$msi`"","/qn","/norestart","/l*v","`"$logs\uninstall.log`"" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "msi removal failed: $($process.ExitCode)" }
+          if (Test-Path $app.FullName) { throw "msi left the app behind" }
+          if (Test-Path $engine) { throw "msi left the engine behind" }
+          "msi removed"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: msi-logs-${{ matrix.runner }}
+          path: msi-logs
+          if-no-files-found: warn
+
+  real-services:
+    name: Real services (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2022, ubuntu-24.04]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Linux libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+      - name: Real news feeds and real skill downloads
+        shell: bash
+        run: |
+          cargo test --manifest-path Desktop/Cargo.toml -p fawaly-core --test real_services -- --ignored --nocapture 2>&1 | tee real-services.log
+          # One working source is enough to pass, so show any other on the run page.
+          if grep -o 'source failure: .*' real-services.log > source-failures.txt; then
+            while IFS= read -r failure; do echo "::warning title=Developer Daily source failed::$failure"; done < source-failures.txt
+          fi
+          # A run that selected no tests also exits 0, so require both to have run.
+          grep -q 'test result: ok\. 2 passed' real-services.log
