@@ -1,5 +1,9 @@
 Build/
 DerivedData/
+Desktop/target/
+Desktop/app/src-tauri/binaries/
+Desktop/app/src-tauri/gen/
+.planning/
 .DS_Store
 *.xcuserstate
 xcuserdata/
