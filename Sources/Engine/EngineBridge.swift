@@ -1,11 +1,15 @@
 import Darwin
 import Foundation
+import os
 
 struct EngineBridge: Sendable {
     let configuration: EngineConfiguration
     let client: EngineAgent?
     private let worker: @Sendable (EngineAgent, String, URL?, Int) async throws -> String
     private let ready: @Sendable (EngineAgent) -> Bool
+    /// Whether this engine session has tried to consult the advisor. Every copy of
+    /// the bridge shares it.
+    private let consulted = OSAllocatedUnfairLock(initialState: false)
 
     init(configuration: EngineConfiguration, client: EngineAgent?,
          worker: (@Sendable (EngineAgent, String, URL?, Int) async throws -> String)? = nil,
@@ -72,6 +76,7 @@ struct EngineBridge: Sendable {
 
     func delegate(brief: String, cwd: String?, provider: String?, timeout: Int?, kind: String? = nil, title: String? = nil) async throws -> Result {
         let state = try WorkshopStore(root: configuration.root).load()
+        try requireConsultation(state, editsProject: cwd != nil)
         let policy = state.delegationPolicy ?? DelegationPolicy()
         let effectiveTimeout = timeout ?? policy.timeoutSeconds
         guard (1...3600).contains(effectiveTimeout) else { throw FawalyError.invalid("Invalid worker timeout.") }
@@ -152,6 +157,7 @@ struct EngineBridge: Sendable {
         guard settings.mode != .off, settings.mode == .important || effectiveReason == .userRequest else {
             throw FawalyError.invalid("The current advisor mode does not allow this request.")
         }
+        consulted.withLock { $0 = true }
         let agent = try select(previous?.provider ?? provider, consultation: true)
         let prompt = Self.consultationPrompt(question: question, context: context, previous: previous?.rounds ?? [])
         let configuredModel = try state.workerModels?[agent.rawValue] ?? (agent.isNative ? nil : APIAssistantStore(root: configuration.root).load(agent)?.model)
@@ -208,6 +214,16 @@ struct EngineBridge: Sendable {
                 .joined(separator: "\n\n")
         }
         return text
+    }
+
+    /// A model can skip a step of its instructions, so the user's advisor policy is
+    /// enforced here. One attempt per session is enough, because an advisor that is
+    /// busy or failing must not block the work.
+    private func requireConsultation(_ state: WorkshopState, editsProject: Bool) throws {
+        let required = editsProject && state.advisors.mode == .important && state.team?.advisor != nil
+        if required && !consulted.withLock({ $0 }) {
+            throw FawalyError.invalid("The user's advisor policy requires a consultation before project work. Call consult with your proposed plan, record your decision with consult_decide, then delegate again.")
+        }
     }
 
     private func select(_ pinned: String?, consultation: Bool = false, kind: String? = nil) throws -> EngineAgent {

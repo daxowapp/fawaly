@@ -110,6 +110,116 @@ private func teamRoot() throws -> URL {
     #expect(reloaded.started == record.started)
 }
 
+private struct ConsultationFixture {
+    let root: URL, project: URL, config: EngineConfiguration
+
+    init(mode: AdvisorMode = .important, advisor: EngineAgent? = .claude) throws {
+        root = try teamRoot()
+        project = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".fawaly-consult-project-" + UUID().uuidString)
+        try Paths.ensurePrivateDirectory(project)
+        config = EngineConfiguration(root: root)
+        _ = try config.allowWorkspace(project.path)
+        var state = WorkshopState()
+        state.advisors.mode = mode
+        state.team = TeamSettings(primary: .codex, advisor: advisor, workers: [.kimi])
+        try WorkshopStore(root: root).save(state)
+    }
+
+    func remove() {
+        try? FileManager.default.removeItem(at: root)
+        try? FileManager.default.removeItem(at: project)
+    }
+
+    func session(failing failed: EngineAgent? = nil) -> EngineBridge {
+        EngineBridge(configuration: config, client: .codex, worker: { agent, _, _, _ in
+            if agent == failed { throw FawalyError.invalid("Fixture advisor unavailable") }
+            return agent.rawValue
+        }, ready: { _ in true })
+    }
+
+    func delegateProjectWork(_ bridge: EngineBridge) async throws -> EngineBridge.Result {
+        try await bridge.delegate(brief: "Fixture project task", cwd: project.path, provider: nil, timeout: 1)
+    }
+
+    func expectRefused(_ bridge: EngineBridge) async throws {
+        let jobs = try TeamJobLog(root: root).recent().count
+        do {
+            _ = try await delegateProjectWork(bridge)
+            Issue.record("Project work started without a consultation")
+        } catch {
+            #expect(error.localizedDescription.contains("requires a consultation"))
+        }
+        #expect(try TeamJobLog(root: root).recent().count == jobs)
+    }
+}
+
+@Test func projectDelegateIsRefusedUntilTheAdvisorIsConsulted() async throws {
+    let fixture = try ConsultationFixture()
+    defer { fixture.remove() }
+    let bridge = fixture.session()
+    try await fixture.expectRefused(bridge)
+    _ = try await bridge.consult(question: "Is the plan sound?", context: "", reason: .plan, provider: nil)
+    let result = try await fixture.delegateProjectWork(bridge)
+    #expect(result.provider == EngineAgent.kimi.providerID)
+    #expect(result.reviewRequired)
+}
+
+@Test func aConsultationOpensOnlyItsOwnEngineSession() async throws {
+    let fixture = try ConsultationFixture()
+    defer { fixture.remove() }
+    _ = try await fixture.session().consult(question: "Is the plan sound?", context: "", reason: .plan, provider: nil)
+    try await fixture.expectRefused(fixture.session())
+}
+
+@Test func aFailedConsultationDoesNotBlockProjectWork() async throws {
+    let fixture = try ConsultationFixture()
+    defer { fixture.remove() }
+    let bridge = fixture.session(failing: .claude)
+    await #expect(throws: FawalyError.self) {
+        try await bridge.consult(question: "Is the plan sound?", context: "", reason: .plan, provider: nil)
+    }
+    #expect(try await fixture.delegateProjectWork(bridge).reviewRequired)
+}
+
+@Test func aBusyAdvisorDoesNotBlockProjectWork() async throws {
+    let fixture = try ConsultationFixture()
+    defer { fixture.remove() }
+    let held = try fixture.config.lockWorker(.claude, workspace: nil)
+    defer { held.forEach { close($0) } }
+    let bridge = fixture.session()
+    do {
+        _ = try await bridge.consult(question: "Is the plan sound?", context: "", reason: .plan, provider: nil)
+        Issue.record("A busy advisor was selected")
+    } catch {
+        #expect(error.localizedDescription.contains("busy"))
+    }
+    #expect(try await fixture.delegateProjectWork(bridge).reviewRequired)
+}
+
+@Test func anInvalidConsultRequestIsNotAnAttempt() async throws {
+    let fixture = try ConsultationFixture()
+    defer { fixture.remove() }
+    let bridge = fixture.session()
+    await #expect(throws: FawalyError.self) {
+        try await bridge.consult(question: "", context: "", reason: .plan, provider: nil)
+    }
+    try await fixture.expectRefused(bridge)
+}
+
+@Test func textOnlyDelegatesDoNotNeedAConsultation() async throws {
+    let fixture = try ConsultationFixture()
+    defer { fixture.remove() }
+    let result = try await fixture.session().delegate(brief: "Fixture advice", cwd: nil, provider: nil, timeout: 1)
+    #expect(result.status == "completed")
+}
+
+@Test(arguments: [(AdvisorMode.onRequest, EngineAgent?.some(.claude)), (.off, .some(.claude)), (.important, nil)])
+func projectWorkNeedsNoConsultationOutsideTheImportantPolicyWithAnAdvisor(mode: AdvisorMode, advisor: EngineAgent?) async throws {
+    let fixture = try ConsultationFixture(mode: mode, advisor: advisor)
+    defer { fixture.remove() }
+    #expect(try await fixture.delegateProjectWork(fixture.session()).reviewRequired)
+}
+
 @Test @MainActor func projectAccessCanBeGrantedAndRevokedWithoutACommand() throws {
     let root = try teamRoot()
     let project = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".fawaly-project-test-" + UUID().uuidString)
