@@ -33,6 +33,10 @@ On Linux, a job's background processes are ended before the job is reported. A h
 
 A busy assigned worker never rolls over to a paid one. The request stops and says so. Only you can allow paid fallback, in Delegation rules. An agent cannot turn it on.
 
+## How the primary uses the team
+
+The app cannot make a model follow instructions, so it does two things. It tells the primary to use the team before changing files, unless the change is one obvious line the user spelled out or the user said not to. And when your advisor policy is **Important**, the engine refuses the first project delegation of each session until the primary has tried to consult. A busy or failing advisor does not block the work. The engine cannot stop a primary from editing files with its own tools if you have allowed them. The macOS app keeps the earlier wording and has no such check.
+
 ## Not available yet
 
 - Automatic updates.
@@ -44,7 +48,7 @@ A busy assigned worker never rolls over to a paid one. The request stops and say
 
 ## What has been tested
 
-Results from CI run [42626337009](https://github.com/daxowapp/fawaly/actions/runs/42626337009), commit `c8bff8c`, on GitHub-hosted runners. These are real installs on those virtual machines, not on physical devices.
+Results from CI run [42649937207](https://github.com/daxowapp/fawaly/actions/runs/42649937207), commit `7038d0f`, on GitHub-hosted runners, and from the runs below on the packages it built. These are real installs on those virtual machines, not on physical devices.
 
 | System | Arch | Packages built | Install, launch, relaunch, remove | Page rendered in English and Arabic | Full onboarding by UI automation | Official CLIs ran |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -56,7 +60,25 @@ Results from CI run [42626337009](https://github.com/daxowapp/fawaly/actions/run
 | Ubuntu 24.04 | arm64 | deb, rpm, AppImage | deb yes, AppImage launch | Yes | Yes | Yes |
 | Fedora 42 (container) | x64, arm64 | rpm from above | Yes | Yes | No | Not run |
 
-Full onboarding means: a fresh profile, the real interface, downloading the official Codex CLI, registering the team in Codex's real settings while keeping another MCP server, then consult, delegate and review, and seeing the task after a relaunch. On those runs the primary was a script and the model was a local fake. **That shows the app, engine and tools work. It does not show that a real model chooses to consult, delegate and review.**
+Full onboarding means: a fresh profile, the real interface, downloading the official Codex CLI, registering the team in Codex's real settings while keeping another MCP server, then consult, delegate and review, and seeing the task after a relaunch. On those runs the primary was a script and the model was a local fake. **That shows the app, engine and tools work. It does not show that a real model chooses to consult, delegate and review.** The next section covers real models.
+
+### Real Claude Code
+
+| Role | Systems | Result | Run |
+| --- | --- | --- | --- |
+| Primary | Windows Server 2022 x64, Ubuntu 24.04 x64, three runs each | 6 of 6 consulted, recorded a decision, delegated, read the result, ran the tests and recorded a review | [42655160307](https://github.com/daxowapp/fawaly/actions/runs/42655160307) |
+| Worker | Windows Server 2022 x64, Ubuntu 24.04 x64 | Fixed a real bug. On Linux it ran under the Landlock helper | [42655170078](https://github.com/daxowapp/fawaly/actions/runs/42655170078) |
+
+The primary got a goal only, with no mention of the team: find out why a project's unit tests fail, fix the code, and follow its notes. Its advisor and worker were local stand-ins. Its own edit tools were denied by the test, so this does not show whether it would delegate when it is allowed to edit. In the worker test the primary was a script, and the Claude credential was placed directly in the system secret store, because the app only offers browser sign-in.
+
+Two earlier results changed the product. With the first wording, a real model made the fix itself and never used the team, on both systems. With the new wording, one of two Windows runs delegated without consulting, which led to the engine check described above.
+
+Also verified on the same packages, in run [42655164403](https://github.com/daxowapp/fawaly/actions/runs/42655164403):
+
+- The MSI on clean Windows Server 2022, Windows Server 2025 and Windows 11 arm64 machines: install, launch, relaunch, English and Arabic page, removal.
+- Cancelling the EXE uninstall at the prompt that the app is running leaves the app, the team registration and another MCP server in place. A normal uninstall afterwards removes the registration.
+- An uninstall with `/UPDATE` keeps the team registration. After a normal uninstall and reinstall, the first launch of a newer version restores it. The newer version was simulated, because only one version has been built.
+- Real Developer Daily feeds and a real Skills download, checksum check and install, on Windows Server 2022 and Ubuntu 24.04.
 
 Also verified in CI:
 
@@ -69,17 +91,16 @@ Also verified in CI:
 
 Not verified:
 
-- A real primary agent on Windows or Linux. This needs a provider account.
-- Sign-in through a real provider account on these systems.
-- Real Codex, Claude Code or Kimi workers editing a project on these systems, including their behavior under Landlock, and Codex's own Windows sandbox.
+- Codex or Kimi as a real primary or worker on these systems, and Codex's own Windows sandbox. These need accounts.
+- A real primary working with a real advisor and a real worker together.
+- Browser sign-in through a real provider account on these systems.
+- A real upgrade between two released versions.
+- Real OpenRouter requests. This needs a key. The logic has automated tests with simulated responses.
 - Physical machines, desktop environments beyond the runners' X virtual display, antivirus products, and SmartScreen behavior.
-- Installing the MSI on a clean machine. In CI it ran after the EXE installer and reused that location.
-- Cancelling the EXE uninstall, and upgrading from one EXE to the next. The team connection should survive both, based on reading the installer template. Neither was run.
-- Real OpenRouter, Skills download and Developer Daily requests. Their logic has automated tests with simulated responses.
 
 One earlier CI run lost its connection to the UI test driver partway through onboarding on all three Linux jobs. It did not recur, and the cause was not established.
 
-In the run above, the Ubuntu 24.04 arm64 install job failed on its first attempt when the app could not download Codex, and passed when that job was re-run. The cause is not known, because the app reports every download failure with the same message.
+In an earlier run, the Ubuntu 24.04 arm64 install job failed on its first attempt when the app could not download Codex, and passed when that job was re-run. The cause is not known, because the app reports every download failure with the same message.
 
 ## Build from source
 
