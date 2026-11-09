@@ -10,6 +10,7 @@ Uses only the standard library. The scripted primary proves the app, engine and
 tools work on this OS. It does not prove a real model decides to use them.
 """
 
+import hashlib
 import http.client
 import json
 import os
@@ -404,6 +405,56 @@ def start_driver():
     return process
 
 
+CALC_BROKEN = b"""def add(a, b):
+    return a - b
+
+
+def average(values):
+    return sum(values) / (len(values) - 1)
+
+
+def divide(a, b):
+    return a / b
+"""
+
+CALC_FIXED = b"""def add(a, b):
+    return a + b
+
+
+def average(values):
+    if not values:
+        raise ValueError("calc: average needs at least one value")
+    return sum(values) / len(values)
+
+
+def divide(a, b):
+    if b == 0:
+        raise ValueError("calc: cannot divide by zero")
+    return a / b
+"""
+
+CALC_TESTS = b"""import unittest
+
+import calc
+
+
+class CalcTests(unittest.TestCase):
+    def test_add(self):
+        self.assertEqual(calc.add(2, 3), 5)
+
+    def test_average(self):
+        self.assertEqual(calc.average([2, 4, 6]), 4)
+
+    def test_average_of_nothing(self):
+        with self.assertRaisesRegex(ValueError, "^calc:"):
+            calc.average([])
+
+    def test_divide_by_zero(self):
+        with self.assertRaisesRegex(ValueError, "^calc:"):
+            calc.divide(1, 0)
+"""
+
+
 def read_claude_events(stream):
     """Logs what the model was offered and what it chose. Returns the final result."""
     result = {}
@@ -433,10 +484,12 @@ def read_claude_events(stream):
 def real_primary(app):
     """A real Claude Code model leads, with no step-by-step direction.
 
-    Only team tools and read-only tools are allowed, so this shows the model
-    follows consult, delegate and review. It does not show whether the model
-    would choose delegation over editing a file itself. The advisor and worker
-    are local stand-ins. The prompt names the goal only.
+    Only team tools, read-only tools and the project's unit tests are allowed, so
+    this shows the model follows consult, delegate and review. It does not show
+    whether the model would choose delegation over editing a file itself. The task
+    needs investigation, because the team is meant for nontrivial work: a real
+    model given a one-line edit tried to make it directly and never used the team.
+    The advisor and worker are local stand-ins. The prompt names the goal only.
     """
     # Removed first, so neither the driver nor the app ever inherits it.
     token = os.environ.pop("FAWALY_TEST_CLAUDE_TOKEN", "")
@@ -449,14 +502,16 @@ def real_primary(app):
     project = pathlib.Path.home() / "sudo-interns-real-project"
     shutil.rmtree(project, ignore_errors=True)
     project.mkdir()
-    (project / "greeting.txt").write_bytes(b"hello\n")
+    (project / "calc.py").write_bytes(CALC_BROKEN)
+    (project / "test_calc.py").write_bytes(CALC_TESTS)
+    (project / "NOTES.md").write_bytes(b"# Notes\n\nEvery error message starts with `calc:`. Do not add dependencies.\n")
 
-    advice = text_reply("The plan is sound. Confirm the file contents after the change.")
-    done = text_reply("Updated greeting.txt to say hello team.")
+    advice = text_reply("The plan is sound. Confirm the tests pass after the change.")
+    done = text_reply("Fixed add and average in calc.py, and added the two ValueError checks with messages starting with calc:.")
     serve(11434, [advice] * 6)
     serve(1234, [
-        tool_reply("1", "read_file", {"path": "greeting.txt"}),
-        tool_reply("2", "write_file", {"path": "greeting.txt", "content": "hello team\n", "expected_sha256": GREETING_DIGEST}),
+        tool_reply("1", "read_file", {"path": "calc.py"}),
+        tool_reply("2", "write_file", {"path": "calc.py", "content": CALC_FIXED.decode(), "expected_sha256": hashlib.sha256(CALC_BROKEN).hexdigest()}),
         done, done, done, done,
     ])
 
@@ -484,7 +539,7 @@ def real_primary(app):
     tools = [f"mcp__fawaly_team__{name}" for name in ("status", "roster_get", "consult", "consult_decide", "delegate", "review")]
     log("starting the real Claude Code primary")
     done_run = subprocess.run(
-        [str(claude), "-p", "Update greeting.txt in this project so it says exactly: hello team", "--output-format", "stream-json", "--verbose", "--max-turns", "30", "--allowedTools", ",".join([*tools, "Read", "Glob", "Grep"])],
+        [str(claude), "-p", "The unit tests in this project are failing. Find out why, fix the code so they all pass, and follow NOTES.md.", "--output-format", "stream-json", "--verbose", "--max-turns", "30", "--allowedTools", ",".join([*tools, "Read", "Glob", "Grep", "Bash(python -m unittest*)", "Bash(python3 -m unittest*)"])],
         cwd=project,
         env={**os.environ, "CLAUDE_CODE_OAUTH_TOKEN": token, "DISABLE_AUTOUPDATER": "1"},
         capture_output=True,
@@ -513,8 +568,9 @@ def real_primary(app):
     reviewed = [job for job in jobs if job["status"] == "reviewed" and job.get("reviews")]
     assert reviewed, "the primary did not record an accepting review"
     assert all(review["primary"] == "claude" and review["verification"].strip() for job in reviewed for review in job["reviews"])
-    assert (project / "greeting.txt").read_bytes().replace(b"\r\n", b"\n") == b"hello team\n"
-    log("real primary consulted, delegated, and reviewed the result")
+    assert (project / "calc.py").read_bytes().replace(b"\r\n", b"\n") == CALC_FIXED
+    subprocess.run([sys.executable, "-m", "unittest"], cwd=project, check=True, timeout=60)
+    log("real primary consulted, delegated, and reviewed the result, and the tests pass")
 
 
 if __name__ == "__main__":
