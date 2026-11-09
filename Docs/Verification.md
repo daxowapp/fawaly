@@ -1,4 +1,4 @@
-> Latest production audit: build29, 157 passing local tests, readable controls, keyboard focus scrolling, bounded MiniMax acceptance and actual Claude collaboration. [Production readiness and remaining release gates](Production-Readiness.md). Public notarized distribution remains blocked.
+> Latest production audit: build29, 157 passing local tests, readable controls, keyboard focus scrolling, bounded MiniMax acceptance and actual Claude collaboration. [Production readiness and remaining release gates](Production-Readiness.md). Apple notarization and same-Mac Gatekeeper launch now pass; public launch remains pending.
 
 # Verification and current limits
 
@@ -89,4 +89,8 @@ The installed universal executable matches the verified Release artifact and pas
 
 The host reproduced and fixed truncated provider output being accepted or executed as tool calls. Fixtures cover OpenAI text/tool replies and Anthropic text/tool replies. A real MiniMax request succeeded with the unchanged output cap and balanced effort; Claude independently read the implementation and saved its acceptance. Recovered originals (70 files) and existing installed instructions/skills (232 files) retain their baseline digests.
 
-Final build 29 source passed [native ARM/Intel CI and history scanning](https://github.com/daxowapp/fawaly/actions/runs/42527692384): Xcode 26.6, 157 tests on each architecture. Installed code matches the verified universal Release. Public distribution remains blocked by Developer ID/notarization, with clean-install, real upgrade, minimum-window, comprehensive VoiceOver, reboot and two-device acceptance still outstanding.
+Final build 29 source passed [native ARM/Intel CI and history scanning](https://github.com/daxowapp/fawaly/actions/runs/42527692384): Xcode 26.6, 157 tests on each architecture. Installed code matches the verified universal Release. This earlier preview was superseded by the notarized release candidate. Clean-install, real upgrade, minimum-window, comprehensive VoiceOver, reboot and two-device acceptance are still outstanding.
+
+## Notarized candidate acceptance
+
+The Developer ID export and the ZIP-extracted copy both passed strict signatures, staple validation and Gatekeeper. Build 29 opened from Applications after the normal Finder move with saved account statuses intact. The live OpenRouter browser link and one short free-model request passed, with a verified $1 total nonresetting key limit and $0 provider usage. The candidate ZIP, checksum and independently verified Sparkle signature are ready locally; the download and update feed are not published.

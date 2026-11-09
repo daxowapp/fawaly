@@ -4,15 +4,15 @@ Fawaly is free software under AGPL-3.0-or-later. The official app stays free. Pr
 
 ## First signed release
 
-The installed local preview uses an Apple Development certificate for stable local identity; CI builds are ad-hoc signed. Neither is a Developer ID public release. It intentionally refuses in-app replacement. Install the first Developer ID signed, notarized release from [the Sudo Interns website](https://daxow.com/fawaly); subsequent updates use Sparkle 2.10.1 with the embedded Ed25519 public key. Update checks are manual, do not send workshop files, and never start while workers, comparisons or setup are active. An exclusive cross-process lease prevents new jobs until the update dialog finishes, or until a pending installation restarts the app.
+The earlier local preview uses an Apple Development certificate for stable local identity and intentionally refuses in-app replacement. CI builds are ad-hoc signed. Build 29 now has a notarized Developer ID release candidate that opens from Applications on the current Mac. The public download link and signed update feed are pending release acceptance. Once published, subsequent updates use Sparkle 2.10.1 with the embedded Ed25519 public key. Update checks are manual, do not send workshop files, and never start while workers, comparisons or setup are active. An exclusive cross-process lease prevents new jobs until the update dialog finishes, or until a pending installation restarts the app.
 
 The publisher's update signing key was generated with Sparkle's official `generate_keys` tool and is stored in the login Keychain under account `com.daxow.fawaly.updates`. Only its public verification key is committed. Fork publishers must use their own key and feed. Keep a secure recovery copy of publisher signing material outside the repository.
 
-The current Mac has no valid Developer ID Application identity. Public Gatekeeper/notarization and real update installation remain unverified until that identity and a notarytool Keychain profile are available. Do not publish the local preview as a notarized installer.
+The current Mac has a verified Developer ID Application identity. Xcode notarization, the stapled ZIP extraction and same-Mac launch passed. A clean-machine install, a real signed upgrade, and publishing the download and update feed remain separate acceptance steps. The local development preview is not a distribution artifact.
 
 ## Maintainer packaging
 
-1. Install a Developer ID Application certificate using Xcode's account/certificate settings.
+1. Install a Developer ID Application certificate from Xcode or the Apple Developer portal, with its matching private key in Keychain.
 2. Store notarization credentials with Apple's `notarytool store-credentials`. Credentials belong in Keychain, never arguments in a saved script, source files or CI logs.
 3. Run `python3 Scripts/package-release.py --preflight`.
 4. Run `python3 Scripts/package-release.py --notary-profile YOUR_KEYCHAIN_PROFILE`. If multiple identities exist, select the installed SHA-1 using `--identity`.
@@ -20,6 +20,8 @@ The current Mac has no valid Developer ID Application identity. Public Gatekeepe
 6. Publish the verified ZIP/DMG/checksums to the matching GitHub release, then replace `updates/appcast.xml` with the reviewed generated feed. The script performs no GitHub upload or source commit.
 
 The script builds every shipped executable for Apple Silicon and Intel, signs nested code from the inside out with hardened runtime and timestamps, notarizes and staples the app and DMG, checks Gatekeeper, and signs the update ZIP. Staging is in the local Library cache to avoid File Provider adding Finder metadata during signing. The DMG has an Applications link and a short Arabic/English installation guide. No Gatekeeper bypass is part of installation.
+
+For an app-only ZIP, the [authenticated Xcode notarization workflow](https://help.apple.com/xcode/mac/current/en.lproj/dev88332a81e.html) is also supported. Archive with hardened runtime and both architectures, upload for Developer ID notarization using the existing certificate, export the notarized app, and verify the app again after extracting the ZIP. This route does not itself notarize a separate DMG. Sign the exact verified ZIP with the pinned Sparkle tool and verify the signature against the embedded public key before preparing any update feed.
 
 ## Installation and relocation
 

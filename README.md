@@ -26,7 +26,7 @@ Keep working in your usual **Codex or Claude Code**. Sudo Interns connects an in
 
 > **Preview:** this is a working reconstruction of Fawaly, not a claim of complete historical feature parity. The current source is buildable and tested locally. A production-signed, notarized public installer is not available yet. See [verification and limits](Docs/Verification.md) and the [public source security review](Docs/Security-Review.md).
 
-> Production status: local preview; 157 tests passed locally and on native Apple Silicon/Intel CI. [Readiness report and remaining Apple distribution checks](Docs/Production-Readiness.md).
+> Production status: notarized macOS release candidate verified; public download pending. 157 tests passed locally and on native Apple Silicon/Intel CI. [Readiness report and remaining Apple distribution checks](Docs/Production-Readiness.md).
 
 ## How the team works
 

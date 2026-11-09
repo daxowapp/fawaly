@@ -2,7 +2,7 @@
 
 ## Release decision
 
-**Local preview only. Public production distribution is blocked.** A successful build and test suite do not mean universal correctness or Apple distribution approval. The current Mac has an Apple Development identity, not a valid Developer ID Application identity. Strict local code-signature verification succeeds, but Gatekeeper assessment rejects this preview and there is no stapled notarization ticket. `Scripts/package-release.py --preflight` correctly stops before building/uploading a release. A fresh-machine install and real signed upgrade are still required after signing/notarization is available.
+**Notarized release candidate verified on the current Mac. Public launch is pending.** Apple issued a Developer ID Application identity and accepted the universal build 29 archive submitted using Xcode. The exported app and the copy extracted from the download ZIP pass strict signature, stapled ticket and Gatekeeper checks. The extracted app was moved into Applications with Finder, opened there and retained the existing workshop and saved account statuses. The installer ZIP and signed update feed are prepared locally. The public release, download website and live update feed have not been changed; clean-machine installation and a version-to-version update still need acceptance.
 
 ## Changes made during this audit
 
@@ -52,13 +52,13 @@ During the earlier build 26 acceptance, the installed executable matched the ver
 
 The actual Claude Code primary also connected to the installed MCP server, read the saved roster, consulted Codex in one completed round and saved an adopted decision. Both agreed on controlled local-preview acceptance while public distribution remains blocked. That consultation used the host's verification summary; neither model claimed to have reproduced the host's tests independently.
 
-## Unperformed external acceptance
+## Remaining external acceptance
 
-A physical Intel Mac, an additional clean macOS account/Mac, actual login/reboot behavior, two physical Macs syncing concurrently, a real OpenRouter account grant and generation request, unconfigured custom/local services, minimum-size window behavior, comprehensive keyboard/VoiceOver navigation and a real notarized version-to-version upgrade remain unverified. No claim of 100% coverage is made.
+A physical Intel Mac, an additional clean macOS account/Mac, actual login/reboot behavior, two physical Macs syncing concurrently, unconfigured custom/local services, minimum-size window behavior, comprehensive keyboard/VoiceOver navigation and a real notarized version-to-version upgrade remain unverified. No claim of 100% coverage is made.
 
 Sources: [Sparkle latest release](https://github.com/sparkle-project/Sparkle/releases/tag/2.10.1), [published security advisories](https://github.com/sparkle-project/Sparkle/security/advisories), [Apple Developer ID distribution](https://help.apple.com/xcode/mac/current/en.lproj/dev033e997ca.html).
 
-## Release-completion follow-up — build 27
+## Earlier release-completion checks — build 27
 
 The host repeated the certificate creation in Xcode using the owner's existing authorization. Apple returned “This operation can only be performed by the Account Holder.” The signed-in team role is Admin; no Developer ID identity was created. Public packaging remains blocked without an Account Holder-provided Developer ID identity and notarization.
 
@@ -78,7 +78,7 @@ The installed interface also reproduced a mascot disappearing after appearance/a
 
 Build 27's full 156-test suite passed on native hosted ARM64 and x86_64 macOS 26 runners, with explicit host-architecture assertions, as did the public-history secret scan: [CI run](https://github.com/daxowapp/fawaly/actions/runs/42526939283). Later build acceptance is recorded below.
 
-## Installed acceptance follow-up — build 29
+## Earlier installed preview acceptance — build 29
 
 All twelve navigation entries opened successfully in build 28, and the thirteenth task-composer section had passed the earlier acceptance. English/light and Arabic/dark settings were checked again. The fixed mascot remained visible after appearance/activation changes. Native accessibility text exposes article titles and skill names on repeated actions.
 
@@ -92,4 +92,12 @@ The installed build 29 keyboard fix was verified: focus on Home moved the sideba
 
 Final code acceptance: [build 29 CI](https://github.com/daxowapp/fawaly/actions/runs/42527692384) completed successfully on both native `arm64` and `x86_64` hosted macOS 26 runners (Xcode 26.6, 157 tests each), plus the public-history secret scan. The installed executable SHA256 is `f7589c136274505361b5e6facff2a5b14fa1fb61ca92e4136cffccf41872cb62`. The release artifact and installed app match; this development signature does not authorize public distribution.
 
-OpenRouter consent was not submitted. The expired authorization tab was closed; a fresh sign-in should start only after the owner's pending approval, preserving the proposed one-dollar total cap/no-reset scope. The existing public website still describes the older Fawaly edition and offers no download. Website/privacy wording and download availability must be reconciled with this rebuilt edition before a public launch.
+At the end of the earlier preview pass, the expired OpenRouter authorization tab was closed without consent. The fresh, approved flow is documented below. The existing public website still describes the older Fawaly edition and offers no download. Website/privacy wording and download availability must be reconciled with this rebuilt edition before a public launch.
+
+## Notarized build 29 and OpenRouter acceptance
+
+After the earlier Xcode account-role error, the existing account successfully issued Developer ID Application through Apple's developer portal. The downloaded certificate matched the Mac-generated CSR and was imported into Keychain. A hardened Xcode archive was uploaded using the signed-in Xcode account and exported with Apple's notarization ticket; no extra app-specific password was required for this route. The notarized universal ZIP passed strict code-signature verification, ticket validation, Gatekeeper assessment and checks for both ARM64 and x86_64 in every bundled executable. The ZIP's Sparkle signature and byte length were checked independently against the public update key embedded in the installed app. The proposed feed remains unpublished.
+
+The installed preview was replaced by the notarized build at the existing application location, with the previous app recoverable in Trash. A first programmatic launch of the quarantined copy was translocated by macOS. Moving it into Applications using Finder and opening it there worked at the installed path with the normal protections intact. Existing workshop and account status remained visible. This is a same-Mac replacement and launch check, not a clean-user or full automatic-update test.
+
+OpenRouter was authorized in the official browser flow. The account dashboard confirmed a $1 total key cap with no reset before any test request. The app tested `nvidia/nemotron-3.5-lightning:free`, saved the connection in Keychain and displayed it as ready; the provider reported $0 usage. The key created in that flow has a one-day expiry and must be reconnected after expiration. No key, certificate private material, provider account identifiers or notarization credential is committed here.
