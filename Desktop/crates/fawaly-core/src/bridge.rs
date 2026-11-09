@@ -10,6 +10,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -71,6 +72,9 @@ pub struct Bridge {
     ready: ReadyFn,
     /// Whether this OS and the user's settings let a worker edit a project.
     takes_project: ReadyFn,
+    /// Whether this session has tried to consult the advisor. Shared by every clone,
+    /// because each tool call runs on its own thread.
+    consulted: Arc<AtomicBool>,
 }
 
 pub struct DelegateRequest<'a> {
@@ -96,17 +100,35 @@ impl Bridge {
                 let landlock = agent.is_native() && confine::landlock_available(for_projects.helper.as_deref());
                 native::choose_confinement(&for_projects, agent, true, landlock).is_ok()
             }),
+            consulted: Arc::new(AtomicBool::new(false)),
         }
     }
 
     pub fn with_doubles(engine: Engine, client: Option<Agent>, worker: WorkerFn, ready: ReadyFn) -> Self {
-        Self { engine, client, worker, ready, takes_project: Arc::new(|_| true) }
+        Self { engine, client, worker, ready, takes_project: Arc::new(|_| true), consulted: Arc::new(AtomicBool::new(true)) }
     }
 
     #[cfg(test)]
     fn limited_to(mut self, takes_project: ReadyFn) -> Self {
         self.takes_project = takes_project;
         self
+    }
+
+    #[cfg(test)]
+    fn not_yet_consulted(self) -> Self {
+        self.consulted.store(false, Ordering::Relaxed);
+        self
+    }
+
+    /// A model can skip a step of its instructions, so the user's advisor policy is
+    /// enforced here. One attempt per session is enough, because an advisor that is
+    /// busy or failing must not block the work.
+    fn require_consultation(&self, state: &WorkshopState, edits_project: bool) -> Result<()> {
+        let required = edits_project && state.advisors.mode == AdvisorMode::Important && state.team.as_ref().is_some_and(|team| team.advisor.is_some());
+        if required && !self.consulted.load(Ordering::Relaxed) {
+            return Err(Error::invalid("The user's advisor policy requires a consultation before project work. Call consult with your proposed plan, record your decision with consult_decide, then delegate again."));
+        }
+        Ok(())
     }
 
     fn state(&self) -> Result<WorkshopState> {
@@ -301,6 +323,7 @@ impl Bridge {
             return Err(Error::invalid(format!("Use one of these task kinds: {}.", TASK_KINDS.join(", "))));
         }
         let state = self.state()?;
+        self.require_consultation(&state, request.cwd.is_some())?;
         let policy = state.delegation_policy.clone().unwrap_or_default();
         let timeout = request.timeout.unwrap_or(policy.timeout_seconds);
         if !(1..=3600).contains(&timeout) {
@@ -431,6 +454,7 @@ impl Bridge {
         if settings.mode == AdvisorMode::Off || (settings.mode != AdvisorMode::Important && effective != ConsultReason::UserRequest) {
             return Err(Error::invalid("The current advisor mode does not allow this request."));
         }
+        self.consulted.store(true, Ordering::Relaxed);
         let agent = self.select(previous.as_ref().map(|record| record.provider.as_str()).or(provider), true, None, false)?;
         let prompt = consultation_prompt(question, context, previous.as_ref().map_or(&[], |record| record.rounds.as_slice()));
         let configured = self.selected_model(&state, agent)?;
@@ -831,6 +855,38 @@ mod tests {
         let harness = Harness::new(team());
         let bridge = harness.bridge(Agent::Codex, &[]);
         assert!(bridge.delegate(harness.delegate("x")).is_err());
+    }
+
+    #[test]
+    fn project_work_waits_for_a_consultation_when_the_policy_requires_one() {
+        let harness = Harness::new(team());
+        let bridge = harness.bridge(Agent::Claude, &[]).not_yet_consulted();
+        let refused = bridge.delegate(harness.delegate("x")).err().expect("must ask for a consultation").to_string();
+        assert!(refused.contains("consult"), "{refused}");
+        assert!(harness.calls.lock().unwrap().is_empty());
+        bridge.consult("Is the plan sound?", "", ConsultReason::Plan, None, None).unwrap();
+        assert!(bridge.delegate(harness.delegate("x")).is_ok());
+    }
+
+    #[test]
+    fn a_failed_consultation_does_not_block_the_work() {
+        let harness = Harness::new(team());
+        let advisor = team().advisor.unwrap();
+        let bridge = harness.bridge(Agent::Claude, &[advisor]).not_yet_consulted();
+        assert!(bridge.consult("Is the plan sound?", "", ConsultReason::Plan, None, None).is_err());
+        assert!(bridge.delegate(harness.delegate("x")).is_ok());
+    }
+
+    #[test]
+    fn only_project_work_under_an_important_policy_needs_a_consultation() {
+        let harness = Harness::new(team());
+        let bridge = harness.bridge(Agent::Claude, &[]).not_yet_consulted();
+        let text_only = DelegateRequest { brief: "x", cwd: None, provider: None, timeout: None, kind: None, title: None };
+        assert!(bridge.delegate(text_only).is_ok());
+        let mut state = WorkshopStore::new(&harness.engine.root).load().unwrap();
+        state.advisors.mode = AdvisorMode::OnRequest;
+        WorkshopStore::new(&harness.engine.root).save(&state).unwrap();
+        assert!(bridge.delegate(harness.delegate("x")).is_ok());
     }
 
     #[test]

@@ -137,13 +137,20 @@ fn profile(advisor_port: u16, worker_port: u16) -> Profile {
     std::fs::write(project.join("greeting.txt"), "hello\n").unwrap();
     let state = json!({
         "team": {"primary":"claude","advisor":"ollama","workers":["lmstudio"]},
-        "advisors": {"mode":"important","maxRounds":3,"timeoutMinutes":1,"seats":[]},
+        "advisors": {"mode":"on_request","maxRounds":3,"timeoutMinutes":1,"seats":[]},
         "onboardingVersion": 1
     });
     std::fs::write(data.join("workshop.json"), serde_json::to_vec(&state).unwrap()).unwrap();
     let assistant = |agent: &str, port: u16| json!({"agent":agent,"endpoint":format!("http://127.0.0.1:{port}/v1/chat/completions"),"model":"local-model","format":"openAI","enabled":true,"dailyRequestLimit":100,"maxRounds":12});
     std::fs::write(data.join("api-assistants.json"), serde_json::to_vec(&json!([assistant("ollama", advisor_port), assistant("lmstudio", worker_port)])).unwrap()).unwrap();
     Profile { _base: base, data, home, project }
+}
+
+fn require_consultation(profile: &Profile) {
+    let path = profile.data.join("workshop.json");
+    let mut state: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    state["advisors"]["mode"] = json!("important");
+    std::fs::write(path, serde_json::to_vec(&state).unwrap()).unwrap();
 }
 
 fn allow(profile: &Profile) {
@@ -176,6 +183,7 @@ fn primary_consults_delegates_and_reviews_a_real_file_edit() {
         text("Updated greeting.txt"),
     ]);
     let profile = profile(advisor_port, worker_port);
+    require_consultation(&profile);
     allow(&profile);
     let mut mcp = Mcp::start(&profile.data, &profile.home, "claude");
 
