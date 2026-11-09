@@ -18,13 +18,24 @@ A free, open-source macOS workshop for your AI coding crew. Your primary leads, 
 
 ![Sudo Interns — your AI coding crew](Docs/Screenshots/workshop-en.png)
 
-**English name: Sudo Interns. Arabic name: الفواعلي.** The name is a developer joke; the app does not grant administrator privileges to its assistants.
-
 Keep working in your usual **Codex or Claude Code**. Sudo Interns connects an independent advisor and supporting workers through MCP. Your primary agent owns the plan, delegates bounded work, inspects the actual changes, runs checks, and records its decision.
 
 **The official app is free and will remain free.** No app subscription, paid unlocks, or artificial feature tiers. AI provider accounts, subscriptions, and usage are separate and subject to each provider’s terms. The interns are free; their providers still keep a tab.
 
 > **Public preview.** Apple notarized the direct Mac build. We tested it on the development Mac and ran 157 tests on each architecture in CI. Clean-Mac installation and a signed automatic upgrade still need verification. [Release notes](https://github.com/daxowapp/fawaly/releases/tag/v0.7.0) · [Readiness report](Docs/Production-Readiness.md).
+
+## Two names, one crew
+
+**الفواعلي (Fawaly)** is our original Egyptian Arabic name. It evokes the workers doing the heavy lifting on a building site. In the coding workshop, those are the assistants who turn the lead agent’s plan into working code. Thanks to [Ahmed Nagdy](https://nagdy.me/) for the original name and [the idea behind it](https://github.com/amElnagdy/delegate-skills).
+
+**Sudo Interns** is a Unix joke. Pair `sudo`, the command for running something with elevated privileges, with the interns who get all the tickets. The app gives assistants the project scope you approve and grants them no administrator privileges.
+
+## What’s new in 0.7.0
+
+- **Skills.** Install curated skills and instruction templates for one project or all local projects. Preview potential overlaps and see what’s installed. [Skills guide](Docs/Skills.md)
+- **Developer Daily.** Browse original developer news, save stories, and prepare a practical brief for your crew. [Developer Daily guide](Docs/Developer-Daily.md)
+- **OpenRouter.** Connect in your browser or use your own key, then search and pick a model in the app.
+- **Guided setup.** Connect providers from the app, manage saved assistants in one place, and set your delegation order. New installations default to English, with Arabic available in Settings.
 
 ## How the team works
 
@@ -124,6 +135,19 @@ Private modifications do not automatically require a public repository, and the 
 الفواعلي بيخلّيك تكمّل شغلك داخل Codex أو Claude Code المعتاد. الأجنت الأساسي يخطّط ويراجع، مستشار مستقل يدّي رأي تاني، والفواعلي ينفّذوا مهام محددة. مثال: Codex أساسي، Claude مستشار، وKimi عامل.
 
 **نسخة الفواعلي الرسمية مجانية وهتفضل دائمًا مجانية**؛ من غير اشتراك للفواعلي أو قفل للمميزات خلف باقات. اشتراكات واستخدام خدمات الذكاء الاصطناعي مستقلة وبتخضع لشروط أصحابها.
+
+### ليه الفواعلي؟ وليه Sudo Interns؟
+
+**الفواعلي** في المصري هم عمال الموقع اللي بيشيلوا الشغل التقيل في البناء. في ورشة الكود، دول المساعدين اللي بيحوّلوا خطة الوكيل الرئيسي لشغل شغّال. شكر لأحمد نجدي، صاحب الفكرة والاسم العربي.
+
+**Sudo Interns** نكتة للمبرمجين. `sudo` أمر في يونكس لتشغيل أوامر بصلاحيات أعلى، وInterns يعني متدربين. تخيّل المتدربين اللي بياخدوا كل التذاكر، ومكافأتهم برومبت كمان. في التطبيق، صلاحياتهم بتتحدد بنطاق الشغل اللي بتوافق عليه.
+
+### إيه الجديد في 0.7.0؟
+
+- **المهارات.** ثبّت مهارة أو قالب تعليمات لمشروع واحد أو لكل المشاريع المحلية. شوف اللي متسطّب وأي تعارض محتمل قبل التثبيت.
+- **أخبار المطوّرين.** اقرأ الخبر من مصدره، احفظه، وجهّز منه طلب عملي تناقشه مع الفريق.
+- **OpenRouter.** اربط حسابك من المتصفح أو بمفتاحك، وابحث عن الموديل واختاره من جوّه التطبيق.
+- **تجهيز أسهل.** اربط حساباتك، وشوف المساعدين المحفوظين في مكان واحد، وظبّط ترتيب التفويض. التثبيت الجديد بيبدأ بالإنجليزي وتقدر تغيّره للعربي.
 
 التجهيز بيتم من واجهة التطبيق: اختيار الفريق، تجهيز الأدوات الرسمية، تسجيل دخول من متصفح الخدمة، وربط الفريق. المستخدم العادي مش محتاج يكتب أوامر Terminal. تختار فولدر المشروع عشان تسمح للعمال بتعديله، والأساسي لازم يراجع الشغل قبل اعتماده.
 
