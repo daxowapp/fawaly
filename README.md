@@ -7,7 +7,7 @@
 
 A free, open-source macOS workshop for your AI coding crew. Your primary leads, an advisor questions the plan, and the interns do the lifting. Hard hats included. Independent review required.
 
-[Download for Mac](https://github.com/daxowapp/fawaly/releases/tag/v0.7.0) · [Website](https://daxow.com/fawaly) · [العربية](#العربية) · [Get started](#get-started) · [Contribute](CONTRIBUTING.md) · [License](LICENSE)
+[Download for Mac](https://github.com/daxowapp/fawaly/releases/tag/v0.7.1) · [Website](https://daxow.com/fawaly) · [العربية](#العربية) · [Get started](#get-started) · [Contribute](CONTRIBUTING.md) · [License](LICENSE)
 
 [![macOS build and secret scan](https://github.com/daxowapp/fawaly/actions/workflows/macos.yml/badge.svg)](https://github.com/daxowapp/fawaly/actions/workflows/macos.yml)
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black)
@@ -22,13 +22,18 @@ Keep working in your usual **Codex or Claude Code**. Sudo Interns connects an in
 
 **The official app is free and will remain free.** No app subscription, paid unlocks, or artificial feature tiers. AI provider accounts, subscriptions, and usage are separate and subject to each provider’s terms. The interns are free; their providers still keep a tab.
 
-> **Public preview.** Apple notarized the direct Mac build. We tested it on the development Mac and ran 157 tests on each architecture in CI. Clean-Mac installation and a signed automatic upgrade still need verification. [Release notes](https://github.com/daxowapp/fawaly/releases/tag/v0.7.0) · [Readiness report](Docs/Production-Readiness.md).
+> **Public preview.** Apple notarized the direct Mac build. We tested it on the development Mac and ran 165 tests on each architecture in CI. Clean-Mac installation and a signed automatic upgrade still need verification. [Release notes](https://github.com/daxowapp/fawaly/releases/tag/v0.7.1) · [Readiness report](Docs/Production-Readiness.md).
 
 ## Two names, one crew
 
 **الفواعلي (Fawaly)** is our original Egyptian Arabic name. It evokes the workers doing the heavy lifting on a building site. In the coding workshop, those are the assistants who turn the lead agent’s plan into working code. Thanks to [Ahmed Nagdy](https://nagdy.me/) for the original name and [the idea behind it](https://github.com/amElnagdy/delegate-skills).
 
 **Sudo Interns** is a Unix joke. Pair `sudo`, the command for running something with elevated privileges, with the interns who get all the tickets. The app gives assistants the project scope you approve and grants them no administrator privileges.
+
+## What’s new in 0.7.1
+
+- **Your team comes first.** The primary agent is told to use the team before changing files. When your advisor policy is **Important**, the engine refuses the first project delegation of a session until the advisor has been consulted. A failed or busy advisor does not block the work.
+- **Windows and Linux preview.** [Installers](https://github.com/daxowapp/fawaly/releases/tag/desktop-v0.7.0) are available. They are unsigned, so Windows SmartScreen will warn you. See [what has and has not been tested](https://github.com/daxowapp/fawaly/blob/feature/windows-linux/Docs/Windows-Linux.md).
 
 ## What’s new in 0.7.0
 
@@ -60,7 +65,7 @@ An agent has one role in a saved team. A typical team is **Codex → Claude advi
 
 The signed, notarized preview supports macOS 14 or later on Apple Silicon and Intel Macs.
 
-1. [Download the Mac ZIP](https://github.com/daxowapp/fawaly/releases/download/v0.7.0/Sudo-Interns-0.7.0.zip), unzip it, and move Sudo Interns to Applications. Open it from there.
+1. [Download the Mac ZIP](https://github.com/daxowapp/fawaly/releases/download/v0.7.1/Sudo-Interns-0.7.1.zip), unzip it, and move Sudo Interns to Applications. Open it from there.
 2. Follow the Arabic or English setup: choose your primary, advisor, and workers.
 3. Let Fawaly prepare the official supporting tools. Sign in through each provider’s own browser flow. No Terminal commands or pasted setup tokens.
 4. Connect the team. Fawaly registers MCP in your primary agent’s user settings. Reopen that client or start a new chat if it cached its tools.
@@ -142,6 +147,11 @@ Private modifications do not automatically require a public repository, and the 
 
 **Sudo Interns** نكتة للمبرمجين. `sudo` أمر في يونكس لتشغيل أوامر بصلاحيات أعلى، وInterns يعني متدربين. تخيّل المتدربين اللي بياخدوا كل التذاكر، ومكافأتهم برومبت كمان. في التطبيق، صلاحياتهم بتتحدد بنطاق الشغل اللي بتوافق عليه.
 
+### إيه الجديد في 0.7.1؟
+
+- **الفريق الأول.** الوكيل الأساسي بقى مطلوب منه يستخدم الفريق قبل ما يغيّر ملفات. ولو سياسة المستشار **مهم**، المحرك بيرفض أول تفويض على المشروع في الجلسة لحد ما يحاول يستشير المستشار. ولو المستشار فشل أو مشغول، الشغل بيكمّل عادي.
+- **نسخة تجريبية لـ Windows وLinux.** [ملفات التثبيت](https://github.com/daxowapp/fawaly/releases/tag/desktop-v0.7.0) متاحة. مش موقّعة، فـ Windows SmartScreen هيحذّرك.
+
 ### إيه الجديد في 0.7.0؟
 
 - **المهارات.** ثبّت مهارة أو قالب تعليمات لمشروع واحد أو لكل المشاريع المحلية. شوف اللي متسطّب وأي تعارض محتمل قبل التثبيت.
@@ -151,7 +161,7 @@ Private modifications do not automatically require a public repository, and the 
 
 التجهيز بيتم من واجهة التطبيق: اختيار الفريق، تجهيز الأدوات الرسمية، تسجيل دخول من متصفح الخدمة، وربط الفريق. المستخدم العادي مش محتاج يكتب أوامر Terminal. تختار فولدر المشروع عشان تسمح للعمال بتعديله، والأساسي لازم يراجع الشغل قبل اعتماده.
 
-النسخة التجريبية العامة موقّعة وموثّقة من Apple، وتشتغل على macOS 14 أو أحدث. فك الضغط وانقل Sudo Interns لفولدر Applications وافتحه من هناك. [نزّل نسخة الماك](https://github.com/daxowapp/fawaly/releases/tag/v0.7.0).
+النسخة التجريبية العامة موقّعة وموثّقة من Apple، وتشتغل على macOS 14 أو أحدث. فك الضغط وانقل Sudo Interns لفولدر Applications وافتحه من هناك. [نزّل نسخة الماك](https://github.com/daxowapp/fawaly/releases/tag/v0.7.1).
 
 الرخصة AGPLv3 أو أحدث بتضمن حقوق الاستخدام والتعديل والمشاركة، وبترجع حق الوصول للمصدر لمستخدمي النسخ الموزعة والخدمات المعدّلة حسب شروطها. بنشجّع كل تحسين يرجع هنا للمجتمع؛ إرسال Pull Request مش شرط إجباري في الرخصة، والتعديلات الخاصة مش لازم تتحول تلقائيًا لمشروع عام.
 

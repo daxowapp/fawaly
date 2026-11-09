@@ -49,7 +49,7 @@ struct EngineBridge: Sendable {
         let active: [String]
         let language: String
         let schema = "delegate-relay.availability.v1"
-        let version = "rebuilt-0.7.0"
+        let version = "rebuilt-0.7.1"
     }
 
     func status() throws -> Status {
