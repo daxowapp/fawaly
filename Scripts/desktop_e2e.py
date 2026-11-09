@@ -4,6 +4,7 @@
   smoke APP [ENGINE]   launch, relaunch, and check the bundled engine
   onboarding APP       drive the real UI with a fresh profile through tauri-driver,
                        then run a scripted primary over the MCP entry the UI registered
+  real-primary APP     same setup, then a real Claude Code model leads (needs a token)
 
 Uses only the standard library. The scripted primary proves the app, engine and
 tools work on this OS. It does not prove a real model decides to use them.
@@ -14,6 +15,7 @@ import json
 import os
 import pathlib
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -267,6 +269,41 @@ def codex_home():
     return pathlib.Path.home() / ".codex"
 
 
+def ui_setup(driver, primary, primary_label):
+    """Walks the real onboarding screens: team, official CLI download, accounts, connect."""
+    driver.click("next")
+    driver.find(f"choice-{primary}")
+    driver.click(f"choice-{primary}")
+    driver.script("""
+        const select = document.querySelector('[data-testid="advisor"]');
+        select.value = 'ollama';
+        select.dispatchEvent(new Event('change'));
+    """)
+    driver.click("worker-lmstudio")
+    driver.screenshot("03-team")
+    driver.click("next")
+
+    log(f"downloading the official {primary_label} CLI through the app")
+    driver.find("next")
+    driver.wait_text(primary_label)
+    driver.click("next", 60)
+    driver.find("save-ollama", 600)
+    driver.screenshot("04-accounts")
+
+    for agent in ("ollama", "lmstudio"):
+        driver.type_into(f"model-{agent}", "local-model")
+        driver.click(f"save-{agent}")
+        driver.wait_text("Saved.", 30)
+        time.sleep(0.5)
+
+    driver.click("next", 30)
+    driver.find("next")
+    driver.screenshot("05-finish")
+    log(f"connecting the team to the real {primary_label} CLI")
+    driver.click("next", 60)
+    driver.find("nav-home", 120)
+
+
 def onboarding(app):
     app = pathlib.Path(app).resolve()
     data = default_data_root()
@@ -306,37 +343,7 @@ def onboarding(app):
         driver.click("language")
         driver.wait_text("Sudo Interns")
 
-        driver.click("next")
-        driver.find("choice-codex")
-        driver.click("choice-codex")
-        driver.script("""
-            const select = document.querySelector('[data-testid="advisor"]');
-            select.value = 'ollama';
-            select.dispatchEvent(new Event('change'));
-        """)
-        driver.click("worker-lmstudio")
-        driver.screenshot("03-team")
-        driver.click("next")
-
-        log("downloading the official Codex CLI through the app")
-        driver.find("next")
-        driver.wait_text("Codex")
-        driver.click("next", 60)
-        driver.find("save-ollama", 600)
-        driver.screenshot("04-accounts")
-
-        for agent in ("ollama", "lmstudio"):
-            driver.type_into(f"model-{agent}", "local-model")
-            driver.click(f"save-{agent}")
-            driver.wait_text("Saved.", 30)
-            time.sleep(0.5)
-
-        driver.click("next", 30)
-        driver.find("next")
-        driver.screenshot("05-finish")
-        log("connecting the team to the real Codex CLI")
-        driver.click("next", 60)
-        driver.find("nav-home", 120)
+        ui_setup(driver, "codex", "Codex")
         driver.screenshot("06-home")
         driver.click("nav-skills")
         driver.wait_text("Skills")
@@ -390,7 +397,101 @@ def onboarding(app):
         driver.quit()
 
 
+def start_driver():
+    native = os.environ.get("EDGE_DRIVER")
+    process = subprocess.Popen(["tauri-driver", *(["--native-driver", native] if native else [])], env=os.environ.copy())
+    time.sleep(3)
+    return process
+
+
+def real_primary(app):
+    """A real Claude Code model leads, with no step-by-step direction.
+
+    Only team tools and read-only tools are allowed, so this shows the model
+    follows consult, delegate and review. It does not show whether the model
+    would choose delegation over editing a file itself. The advisor and worker
+    are local stand-ins. The prompt names the goal only.
+    """
+    # Removed first, so neither the driver nor the app ever inherits it.
+    token = os.environ.pop("FAWALY_TEST_CLAUDE_TOKEN", "")
+    if not token:
+        raise SystemExit("FAWALY_TEST_CLAUDE_TOKEN is not set")
+    app = pathlib.Path(app).resolve()
+    data = default_data_root()
+    assert not data.exists(), "this test must start from a fresh profile"
+
+    project = pathlib.Path.home() / "sudo-interns-real-project"
+    shutil.rmtree(project, ignore_errors=True)
+    project.mkdir()
+    (project / "greeting.txt").write_bytes(b"hello\n")
+
+    advice = text_reply("The plan is sound. Confirm the file contents after the change.")
+    done = text_reply("Updated greeting.txt to say hello team.")
+    serve(11434, [advice] * 6)
+    serve(1234, [
+        tool_reply("1", "read_file", {"path": "greeting.txt"}),
+        tool_reply("2", "write_file", {"path": "greeting.txt", "content": "hello team\n", "expected_sha256": GREETING_DIGEST}),
+        done, done, done, done,
+    ])
+
+    driver_process = start_driver()
+    driver = WebDriver(app)
+    try:
+        driver.find("next")
+        ui_setup(driver, "claude", "Claude Code")
+        driver.screenshot("06-home")
+    finally:
+        driver.quit()
+        driver_process.terminate()
+
+    state_file = data / "workshop.json"
+    state = json.loads(state_file.read_text(encoding="utf-8"))
+    assert state["team"] == {"primary": "claude", "advisor": "ollama", "workers": ["lmstudio"]}, state["team"]
+    assert state["advisors"]["mode"] == "important", state["advisors"]
+    state["projectDirectory"] = str(project)  # The folder picker is a native dialog.
+    state_file.write_text(json.dumps(state), encoding="utf-8")
+    launcher = data / "bin" / ("sudo-interns-engine.exe" if WINDOWS else "sudo-interns-engine")
+    subprocess.run([str(launcher), "allow-workspace", str(project)], check=True, timeout=30)
+
+    claude_name = "claude.exe" if WINDOWS else "claude"
+    claude = data / "runtimes" / "claude" / claude_name
+    tools = [f"mcp__fawaly_team__{name}" for name in ("status", "roster_get", "consult", "consult_decide", "delegate", "review")]
+    log("starting the real Claude Code primary")
+    done_run = subprocess.run(
+        [str(claude), "-p", "Update greeting.txt in this project so it says exactly: hello team", "--output-format", "json", "--max-turns", "30", "--allowedTools", ",".join([*tools, "Read", "Glob", "Grep"])],
+        cwd=project,
+        env={**os.environ, "CLAUDE_CODE_OAUTH_TOKEN": token, "DISABLE_AUTOUPDATER": "1"},
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=900,
+    )
+    del token
+    if done_run.returncode != 0:
+        log(f"Claude Code exited with {done_run.returncode}: {done_run.stdout[-1500:]} {done_run.stderr[-1500:]}")
+    summary = json.loads(done_run.stdout)
+    log(f"turns: {summary.get('num_turns')}; denied tools: {[item.get('tool_name') for item in summary.get('permission_denials', [])]}")
+    log(f"final message: {str(summary.get('result'))[:1500]}")
+
+    database = sqlite3.connect(data / "worklog.sqlite")
+    consults = [json.loads(row[0]) for row in database.execute("SELECT record FROM consults")]
+    jobs = [json.loads(bytes(row[0])) for row in database.execute("SELECT payload FROM team_jobs")]
+    database.close()
+    for record in consults:
+        log(f"consult: {record['question'][:300]!r}; decision: {record.get('decision')}; note: {str(record.get('summary'))[:300]!r}")
+    for job in jobs:
+        log(f"job: {job['title'][:200]!r}; status: {job['status']}; reviews: {json.dumps(job.get('reviews', []), ensure_ascii=False)[:900]}")
+
+    assert consults, "the primary did not consult its advisor"
+    assert jobs, "the primary did not delegate"
+    reviewed = [job for job in jobs if job["status"] == "reviewed" and job.get("reviews")]
+    assert reviewed, "the primary did not record an accepting review"
+    assert all(review["primary"] == "claude" and review["verification"].strip() for job in reviewed for review in job["reviews"])
+    assert (project / "greeting.txt").read_bytes().replace(b"\r\n", b"\n") == b"hello team\n"
+    log("real primary consulted, delegated, and reviewed the result")
+
+
 if __name__ == "__main__":
-    if len(sys.argv) < 3 or sys.argv[1] not in ("smoke", "onboarding"):
+    if len(sys.argv) < 3 or sys.argv[1] not in ("smoke", "onboarding", "real-primary"):
         raise SystemExit(__doc__)
-    {"smoke": smoke, "onboarding": onboarding}[sys.argv[1]](*sys.argv[2:])
+    {"smoke": smoke, "onboarding": onboarding, "real-primary": real_primary}[sys.argv[1]](*sys.argv[2:])

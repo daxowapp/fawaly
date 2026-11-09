@@ -1,0 +1,86 @@
+# Runs the real Claude Code primary against already-built packages.
+# It spends the account behind FAWALY_TEST_CLAUDE_TOKEN, so it runs only when
+# the test/real-agent branch is pushed, or when a run of it is re-run.
+name: Desktop real primary agent
+on:
+  push:
+    branches: [test/real-agent]
+permissions:
+  contents: read
+  actions: read
+env:
+  PACKAGES_RUN: "42598486970"
+  TAURI_DRIVER_VERSION: "2.1.0"
+jobs:
+  windows:
+    name: Real primary (windows-2022)
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sudo-interns-windows-x64
+          path: packages
+          run-id: ${{ env.PACKAGES_RUN }}
+          github-token: ${{ github.token }}
+      - name: Install the app and UI test tools
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem packages -Recurse -Filter *setup.exe | Select-Object -First 1
+          Start-Process $installer.FullName -ArgumentList "/S" -Wait
+          rustup toolchain install stable --profile minimal
+          cargo install tauri-driver --version "$env:TAURI_DRIVER_VERSION" --locked
+          $id = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $keys = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$id", "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$id"
+          $version = $keys | ForEach-Object { (Get-ItemProperty $_ -ErrorAction SilentlyContinue).pv } | Where-Object { $_ } | Select-Object -First 1
+          Invoke-WebRequest "https://msedgedriver.microsoft.com/$version/edgedriver_win64.zip" -OutFile "$env:RUNNER_TEMP\edgedriver.zip"
+          Expand-Archive "$env:RUNNER_TEMP\edgedriver.zip" "$env:RUNNER_TEMP\edgedriver"
+          "EDGE_DRIVER=$env:RUNNER_TEMP\edgedriver\msedgedriver.exe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+      - name: Real Claude Code primary on a test project
+        shell: pwsh
+        env:
+          FAWALY_TEST_CLAUDE_TOKEN: ${{ secrets.FAWALY_TEST_CLAUDE_TOKEN }}
+          E2E_SCREENSHOTS: ${{ github.workspace }}/e2e-screenshots
+        run: python Scripts/desktop_e2e.py real-primary "$env:LOCALAPPDATA\Sudo Interns\sudo-interns.exe"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: real-primary-windows
+          path: e2e-screenshots
+          if-no-files-found: ignore
+
+  linux:
+    name: Real primary (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sudo-interns-linux-x64
+          path: packages
+          run-id: ${{ env.PACKAGES_RUN }}
+          github-token: ${{ github.token }}
+      - name: Install the app and UI test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y "$(find "$PWD/packages" -name '*.deb' | head -1)"
+          sudo apt-get install -y xvfb webkit2gtk-driver
+          rustup toolchain install stable --profile minimal
+          cargo install tauri-driver --version "$TAURI_DRIVER_VERSION" --locked
+      - name: Real Claude Code primary on a test project
+        env:
+          FAWALY_TEST_CLAUDE_TOKEN: ${{ secrets.FAWALY_TEST_CLAUDE_TOKEN }}
+          E2E_SCREENSHOTS: ${{ github.workspace }}/e2e-screenshots
+        run: xvfb-run -a python3 Scripts/desktop_e2e.py real-primary /usr/bin/sudo-interns
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: real-primary-linux
+          path: e2e-screenshots
+          if-no-files-found: ignore
