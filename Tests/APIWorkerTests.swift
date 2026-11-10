@@ -214,3 +214,110 @@ private func apiProfile(format: APIAssistant.Format = .openAI) -> APIAssistant {
     await #expect(throws: FawalyError.self) { try await bridge.delegate(brief: "capped fixture", cwd: nil, provider: EngineAgent.openAIAPI.providerID, timeout: 2) }
     #expect(try TeamJobLog(root: root).recent().isEmpty)
 }
+
+@Test func editFileChangesExactPassagesAtomicallyThroughTheAnchoredWrite() throws {
+    let root = try apiRoot(), project = root.appendingPathComponent("project")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try Paths.ensurePrivateDirectory(project)
+    let outside = root.appendingPathComponent("outside.txt")
+    try Data("private outside".utf8).write(to: outside)
+    try FileManager.default.createSymbolicLink(at: project.appendingPathComponent("link"), withDestinationURL: outside)
+    let files = try APIWorkspace(project)
+    let first = try files.write("notes.txt", content: "alpha\r\nbeta ✓\nbeta again\n", expectedDigest: "")
+    #expect(try files.read("notes.txt").digest == first)
+
+    // Edits apply in order, each to the result of the one before.
+    let second = try files.edit("notes.txt", edits: [.init(old: "alpha\r\n", new: "gamma\r\n"), .init(old: "gamma", new: "delta")], expectedDigest: first)
+    let changed = try files.read("notes.txt")
+    #expect(changed.text == "delta\r\nbeta ✓\nbeta again\n" && changed.digest == second)
+
+    // A missing, repeated or empty passage, a later edit that fails, no edits,
+    // a stale digest and an oversized result all leave the file untouched.
+    let rejected: [[APIWorkspace.Edit]] = [
+        [.init(old: "absent", new: "x")], [.init(old: "beta", new: "x")], [.init(old: "", new: "x")],
+        [.init(old: "delta", new: "must not stay"), .init(old: "absent", new: "x")], [],
+        [.init(old: "delta", new: String(repeating: "x", count: APIWorkspace.limit))]
+    ]
+    for edits in rejected {
+        #expect(throws: FawalyError.self) { _ = try files.edit("notes.txt", edits: edits, expectedDigest: second) }
+    }
+    #expect(throws: FawalyError.self) { _ = try files.edit("notes.txt", edits: [.init(old: "delta", new: "stale")], expectedDigest: first) }
+    #expect(try files.read("notes.txt").digest == second)
+
+    // The same confinement as read and write.
+    for path in ["../outside.txt", "/etc/passwd", "link", ".git/config", "missing.txt"] {
+        #expect(throws: FawalyError.self) { _ = try files.edit(path, edits: [.init(old: "private", new: "leaked")], expectedDigest: second) }
+    }
+    #expect(try String(contentsOf: outside) == "private outside")
+
+    // A change made elsewhere after the last read is never overwritten.
+    try Data("changed elsewhere".utf8).write(to: project.appendingPathComponent("notes.txt"))
+    #expect(throws: FawalyError.self) { _ = try files.edit("notes.txt", edits: [.init(old: "changed", new: "lost")], expectedDigest: second) }
+    #expect(try String(contentsOf: project.appendingPathComponent("notes.txt")) == "changed elsewhere")
+    #expect(try files.list() == ["notes.txt"])
+}
+
+@Test func apiWorkerEditsPartOfALargeFileAndSendsTheConfiguredReplyLimit() async throws {
+    for format in APIAssistant.Format.allCases {
+        let root = try apiRoot(), project = root.appendingPathComponent("project")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Paths.ensurePrivateDirectory(project)
+        // About 60 KB: far more than one reply could resend as a whole file.
+        let unchanged = String(repeating: "unchanged line\n", count: 4000)
+        let digest = try APIWorkspace(project).write("big.txt", content: unchanged + "old ending\n", expectedDigest: "")
+        let edits = [["old_text": "old ending", "new_text": "new ending"]]
+        let call: [String: Any], done: [String: Any]
+        if format == .openAI {
+            let arguments = String(decoding: try JSONSerialization.data(withJSONObject: ["path": "big.txt", "expected_sha256": digest, "edits": edits]), as: UTF8.self)
+            call = ["choices": [["message": ["role": "assistant", "content": NSNull(), "tool_calls": [["id": "call-1", "type": "function", "function": ["name": "edit_file", "arguments": arguments]]]]]]]
+            done = ["choices": [["message": ["role": "assistant", "content": "Changed the ending."]]]]
+        } else {
+            // Some models send the array as JSON text; it is accepted.
+            let text = String(decoding: try JSONSerialization.data(withJSONObject: edits), as: UTF8.self)
+            call = ["content": [["type": "tool_use", "id": "call-1", "name": "edit_file", "input": ["path": "big.txt", "expected_sha256": digest, "edits": text]]]]
+            done = ["content": [["type": "text", "text": "Changed the ending."]]]
+        }
+        let fixture = APIFixture([call, done])
+        var worker = APIWorker(root: root)
+        worker.credential = { _ in "fixture-service-key" }
+        worker.transport = { try await fixture.send($0) }
+        var profile = apiProfile(format: format)
+        profile.maxOutputTokens = 8192
+        #expect(try await worker.run(profile, prompt: "Change the ending", workspace: project, timeout: 10) == "Changed the ending.")
+        let result = try APIWorkspace(project).read("big.txt")
+        #expect(result.text == unchanged + "new ending\n")
+        let requests = await fixture.requests
+        let body = try #require(JSONSerialization.jsonObject(with: requests[0].httpBody!) as? [String: Any])
+        #expect(body["max_tokens"] as? Int == 8192)
+        let tools = try #require(body["tools"] as? [[String: Any]])
+        #expect(tools.contains { ($0["name"] as? String ?? ($0["function"] as? [String: Any])?["name"] as? String) == "edit_file" })
+        // The worker is told the new digest, so a further edit needs no re-read.
+        #expect(String(decoding: requests[1].httpBody!, as: UTF8.self).contains("New SHA-256: " + result.digest))
+    }
+}
+
+@Test func replyLimitIsOptionalBoundedAndDefaultsToTheOldValue() async throws {
+    var profile = apiProfile()
+    try profile.validate()
+    let stored = try JSONEncoder().encode(profile)
+    #expect(!String(decoding: stored, as: UTF8.self).contains("maxOutputTokens"))
+    #expect(try JSONDecoder().decode(APIAssistant.self, from: stored).maxOutputTokens == nil)
+    for value in [-1, 0, 1023, 65537] {
+        profile.maxOutputTokens = value
+        #expect(throws: FawalyError.self) { try profile.validate() }
+    }
+    profile.maxOutputTokens = 65536
+    try profile.validate()
+    #expect(try JSONDecoder().decode(APIAssistant.self, from: JSONEncoder().encode(profile)).maxOutputTokens == 65536)
+
+    let root = try apiRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = APIFixture([["choices": [["message": ["role": "assistant", "content": "ready"]]]]])
+    var worker = APIWorker(root: root)
+    worker.credential = { _ in "fixture-service-key" }
+    worker.transport = { try await fixture.send($0) }
+    _ = try await worker.run(apiProfile(), prompt: "fixture", workspace: nil, timeout: 5)
+    let requests = await fixture.requests
+    let body = try #require(JSONSerialization.jsonObject(with: requests[0].httpBody!) as? [String: Any])
+    #expect(body["max_tokens"] as? Int == 4096)
+}

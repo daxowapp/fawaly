@@ -42,9 +42,39 @@ final class APIWorkspace {
     func read(_ path: String) throws -> (text: String, digest: String) {
         let (parent, name) = try parent(path)
         defer { close(parent) }
-        return try read(parent: parent, name: name)
+        let value = try read(parent: parent, name: name)
+        return (value.text, value.digest)
     }
-    private func read(parent: Int32, name: String) throws -> (text: String, digest: String) {
+    struct Edit { let old: String; let new: String }
+    /// Replace exact passages of an existing file and return its new digest.
+    /// Each passage must occur exactly once, byte for byte, in the result of
+    /// the edits before it. Nothing is written unless every edit applies, and
+    /// the commit is the same anchored compare-and-swap as `write`.
+    func edit(_ path: String, edits: [Edit], expectedDigest: String) throws -> String {
+        guard (1...32).contains(edits.count) else { throw FawalyError.invalid("Provide 1 to 32 edits.") }
+        let (parent, name) = try parent(path)
+        let current: (data: Data, text: String, digest: String)
+        do { defer { close(parent) }; current = try read(parent: parent, name: name) }
+        guard current.digest == expectedDigest else {
+            throw FawalyError.invalid("The file changed or was not read. Read it again before editing.")
+        }
+        var bytes = current.data
+        for (index, edit) in edits.enumerated() {
+            let old = Data(edit.old.utf8)
+            guard !old.isEmpty else { throw FawalyError.invalid("Edit \(index + 1): old_text is empty.") }
+            guard let match = bytes.range(of: old) else {
+                throw FawalyError.invalid("Edit \(index + 1): old_text was not found. Copy it exactly from the file, including spaces and line breaks. Nothing was written.")
+            }
+            guard bytes.range(of: old, in: (match.lowerBound + 1)..<bytes.endIndex) == nil else {
+                throw FawalyError.invalid("Edit \(index + 1): old_text occurs more than once. Include more of the surrounding text. Nothing was written.")
+            }
+            bytes.replaceSubrange(match, with: Data(edit.new.utf8))
+            guard bytes.count <= Self.limit else { throw FawalyError.invalid("Edit \(index + 1) makes the file larger than 128 KB. Nothing was written.") }
+        }
+        guard String(data: bytes, encoding: .utf8) != nil else { throw failure }
+        return try write(path, data: bytes, expectedDigest: expectedDigest)
+    }
+    private func read(parent: Int32, name: String) throws -> (data: Data, text: String, digest: String) {
         let fd = openat(parent, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
         guard fd >= 0 else { throw failure }
         let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
@@ -54,19 +84,25 @@ final class APIWorkspace {
               info.st_size <= Self.limit, info.st_flags & UInt32(SF_DATALESS) == 0 else { throw failure }
         let data = try handle.read(upToCount: Self.limit + 1) ?? Data()
         guard data.count <= Self.limit, let text = String(data: data, encoding: .utf8) else { throw failure }
-        return (text, Self.digest(data))
+        return (data, text, Self.digest(data))
     }
-    func write(_ path: String, content: String, expectedDigest: String) throws {
+    /// Returns the digest of the written file, for a later write or edit.
+    @discardableResult
+    func write(_ path: String, content: String, expectedDigest: String) throws -> String {
+        try write(path, data: Data(content.utf8), expectedDigest: expectedDigest)
+    }
+    private func write(_ path: String, data: Data, expectedDigest: String) throws -> String {
         guard expectedDigest.isEmpty || (expectedDigest.count == 64 && expectedDigest.allSatisfy { $0.isHexDigit }) else { throw failure }
         let (parent, _) = try parent(path, create: expectedDigest.isEmpty)
         close(parent)
         var coordinationError: NSError?, bodyError: Error?
         NSFileCoordinator(filePresenter: nil).coordinate(writingItemAt: folder.appendingPathComponent(path), options: .forReplacing, error: &coordinationError) { _ in
-            do { try writeAnchored(path, content: content, expectedDigest: expectedDigest) }
+            do { try writeAnchored(path, data: data, expectedDigest: expectedDigest) }
             catch { bodyError = error }
         }
         if let bodyError { throw bodyError }
         if let coordinationError { throw coordinationError }
+        return Self.digest(data)
     }
     /// Preserve executable helpers from a verified skill manifest without executing them.
     func markExecutable(_ path: String, expectedDigest: String) throws {
@@ -82,8 +118,7 @@ final class APIWorkspace {
         let bytes = try handle.read(upToCount: Self.limit + 1) ?? Data()
         guard bytes.count <= Self.limit, Self.digest(bytes) == expectedDigest, fchmod(fd, 0o700) == 0 else { throw failure }
     }
-    private func writeAnchored(_ path: String, content: String, expectedDigest: String) throws {
-        let data = Data(content.utf8)
+    private func writeAnchored(_ path: String, data: Data, expectedDigest: String) throws {
         guard data.count <= Self.limit else { throw failure }
         let (parent, name) = try parent(path, create: true)
         defer { close(parent) }
