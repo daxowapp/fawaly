@@ -66,7 +66,7 @@ struct WorkshopWindow: View {
                     }
                     Spacer()
                     Button(model.arabic ? "EN" : "عربي") { model.setArabic(!model.arabic) }.buttonStyle(.plain).accessibilityLabel(model.arabic ? "English" : "العربية")
-                    Button { model.refreshTeamActivity() } label: { Image(systemName: "arrow.clockwise") }
+                    Button { Task { await model.refreshTeamActivity(force: true) } } label: { Image(systemName: "arrow.clockwise") }
                         .buttonStyle(.plain).accessibilityLabel(model.text("تحديث النشاط", "Refresh activity"))
                 }.padding(.horizontal, 24).padding(.top, 12)
                 HazardStripe()

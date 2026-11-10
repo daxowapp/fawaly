@@ -90,26 +90,39 @@ public struct ConsultLog: Sendable {
         try write(record, sql: "UPDATE consults SET created = ?2, status = ?3, record = ?4 WHERE id = ?1 AND record = ?5", replacing: previous)
     }
     
-    private func select(_ sql: String, _ bind: (OpaquePointer?) -> Void = { _ in }) throws -> [ConsultRecord] {
+    /// A record this version cannot decode is skipped and counted instead of
+    /// hiding every other consultation. A busy or failing database is an
+    /// error, never a silently shorter list. The limit counts readable records.
+    private func select(_ sql: String, limit: Int? = nil, _ bind: (OpaquePointer?) -> Void = { _ in }) throws -> (records: [ConsultRecord], unreadable: Int) {
         try database { db in
             var stmt: OpaquePointer?; defer { sqlite3_finalize(stmt) }
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { throw FawalyError.invalid("Cannot read consultations") }
             bind(stmt)
-            var records: [ConsultRecord] = []
-            while sqlite3_step(stmt) == SQLITE_ROW { if let text = sqlite3_column_text(stmt, 0) { records.append(try Self.decoder().decode(ConsultRecord.self, from: Data(String(cString: text).utf8))) } }
-            return records
+            var records: [ConsultRecord] = [], unreadable = 0
+            var result = sqlite3_step(stmt)
+            while result == SQLITE_ROW {
+                if let limit, records.count >= limit { return (records, unreadable) }
+                if let text = sqlite3_column_text(stmt, 0),
+                   let record = try? Self.decoder().decode(ConsultRecord.self, from: Data(String(cString: text).utf8)) {
+                    records.append(record)
+                } else { unreadable += 1 }
+                result = sqlite3_step(stmt)
+            }
+            guard result == SQLITE_DONE else { throw FawalyError.invalid("Cannot read consultations") }
+            return (records, unreadable)
         }
     }
     public func get(_ id: UUID) throws -> ConsultRecord? {
-        try select("SELECT record FROM consults WHERE id = ?1") { sqlite3_bind_text($0, 1, id.uuidString, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self)) }.first
+        try select("SELECT record FROM consults WHERE id = ?1") { sqlite3_bind_text($0, 1, id.uuidString, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self)) }.records.first
     }
-    public func recent(limit: Int = 100) throws -> [ConsultRecord] {
-        try select("SELECT record FROM consults ORDER BY created DESC, id DESC LIMIT ?1") { sqlite3_bind_int($0, 1, Int32(max(1, min(limit, 1000)))) }
+    public func recent(limit: Int = 100) throws -> [ConsultRecord] { try load(limit: limit).records }
+    func load(limit: Int = 100) throws -> (records: [ConsultRecord], unreadable: Int) {
+        try select("SELECT record FROM consults ORDER BY created DESC, id DESC", limit: max(1, min(limit, 1000)))
     }
     /// Open consultations older than 24 h become "no decision recorded".
     @discardableResult public func expireOpen(now: Date) throws -> Int {
         var count = 0
-        for var record in try select("SELECT record FROM consults WHERE status = 'open'") where now.timeIntervalSince(record.created) > Self.openLimit {
+        for var record in try select("SELECT record FROM consults WHERE status = 'open'").records where now.timeIntervalSince(record.created) > Self.openLimit {
             record.status = .noDecision; record.updated = now; try update(record); count += 1
         }
         return count

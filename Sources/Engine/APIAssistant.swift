@@ -12,11 +12,18 @@ struct APIAssistant: Codable, Equatable, Sendable {
     var enabled = true
     var dailyRequestLimit = 100
     var maxRounds = 12
+    /// Reply size requested from the service for each round. Nil keeps the
+    /// default, which every supported service accepts; a larger value must be
+    /// one the chosen model allows, or the service rejects the request.
+    var maxOutputTokens: Int?
+    static let defaultOutputTokens = 4096
+    static let outputTokenRange = 1024...65536
     var local: Bool { ["localhost", "127.0.0.1", "[::1]", "::1"].contains(endpoint.host?.lowercased() ?? "") }
     var keyAccount: String { agent.rawValue + ":" + SHA256.hash(data: Data(endpoint.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined() }
 
     func validate() throws {
         guard !agent.isNative, OfficialModels.valid(model), (1...10000).contains(dailyRequestLimit), (1...32).contains(maxRounds),
+              maxOutputTokens.map(Self.outputTokenRange.contains) ?? true,
               let parts = URLComponents(url: endpoint, resolvingAgainstBaseURL: false), let host = parts.host, !host.isEmpty,
               parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil,
               parts.scheme == "https" || (parts.scheme == "http" && local),

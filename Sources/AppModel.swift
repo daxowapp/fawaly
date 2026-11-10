@@ -24,6 +24,11 @@ final class AppModel: ObservableObject {
     private let monitoringStarted = Date()
     private var notified = Set<UUID>()
     private var launcherChecked = false
+    private var refreshingActivity = false
+    private var activitySignature: WorkLogSignature?
+    private var lastActivityFailure: String?
+    private var reportedUnreadable = false
+    private var consultsRevision = 0
     var activeWorkCount: Int { teamJobs.filter { $0.status == "running" }.count + activeComparisons + (skillActivity.active == nil ? 0 : 1) }
 
     @Published var problem: String?
@@ -80,8 +85,6 @@ final class AppModel: ObservableObject {
         refreshEngine()
         do {
             state = try store.load()
-            try refreshConsults()
-            teamJobs = try TeamJobLog(root: engine.root).recent(limit: nil)
             loaded = true
             showOnboarding = state.onboardingVersion != 2
             setup.team = state.team ?? TeamSettings()
@@ -91,27 +94,60 @@ final class AppModel: ObservableObject {
         } catch {
             loaded = false
             report(error)
+            return
         }
+        // History is display data. A damaged or busy work log is reported, but
+        // must not leave the workshop unable to save its settings.
+        do {
+            try consultLog.expireOpen(now: Date())
+            let records = try consultLog.load()
+            let jobs = try TeamJobLog(root: engine.root).load(limit: nil)
+            consults = records.records
+            consultsRevision += 1
+            teamJobs = jobs.jobs
+            noteUnreadable(jobs.unreadable + records.unreadable)
+        } catch { report(error) }
     }
 
-    func refreshTeamActivity() {
-        guard loaded else { return }
-        do {
-            let recent = try TeamJobLog(root: engine.root).recent(limit: nil)
-            for job in recent where job.finished != nil {
-                guard notified.insert(job.id).inserted, let finished = job.finished,
-                      finished >= monitoringStarted, state.preferences?.notifications == true else { continue }
-                let language = arabic
-                Task { await WorkshopNotifications.completed(agent: job.worker, needsReview: job.reviewRequired,
-                    failed: ["failed", "cancelled"].contains(job.status), arabic: language) }
-            }
-            activeComparisons = (try? ComparisonStore(root: engine.root).recent().filter {
-                $0.runs.contains { ["running", "waiting"].contains($0.status) }
-            }.count) ?? 0
-            if recent != teamJobs { teamJobs = recent }
-            let records = try consultLog.recent()
-            if records != consults { consults = records }
-        } catch { report(error) }
+    /// Reads the history away from the main thread and applies what changed.
+    /// The regular check skips the read while the work log file is unchanged;
+    /// `force` always reads.
+    func refreshTeamActivity(force: Bool = false) async {
+        guard loaded, !refreshingActivity else { return }
+        refreshingActivity = true
+        defer { refreshingActivity = false }
+        let root = engine.root, known = force ? nil : activitySignature, revision = consultsRevision
+        let snapshot = await Task.detached(priority: .utility) { TeamActivitySnapshot.read(root: root, known: known) }.value
+        if snapshot.activeComparisons != activeComparisons { activeComparisons = snapshot.activeComparisons }
+        // Only the last failure is remembered: the same one is shown once, and
+        // a successful read lets it be shown again if it comes back.
+        if snapshot.failure != lastActivityFailure {
+            lastActivityFailure = snapshot.failure
+            if let failure = snapshot.failure { problem = failure }
+        }
+        guard let logs = snapshot.logs else { return }
+        for job in logs.jobs where job.finished != nil {
+            guard notified.insert(job.id).inserted, let finished = job.finished,
+                  finished >= monitoringStarted, state.preferences?.notifications == true else { continue }
+            let language = arabic
+            Task { await WorkshopNotifications.completed(agent: job.worker, needsReview: job.reviewRequired,
+                failed: ["failed", "cancelled"].contains(job.status), arabic: language) }
+        }
+        if logs.jobs != teamJobs { teamJobs = logs.jobs }
+        // A consultation saved here while the read was running is newer than
+        // the snapshot; keep it and read again on the next check.
+        if revision == consultsRevision {
+            if logs.consults != consults { consults = logs.consults }
+            activitySignature = logs.signature
+        } else { activitySignature = nil }
+        noteUnreadable(logs.unreadable)
+    }
+
+    private func noteUnreadable(_ count: Int) {
+        guard count > 0, !reportedUnreadable else { return }
+        reportedUnreadable = true
+        problem = text("فيه \(count) سجل محفوظ مش مقروء واتخطّى. باقي السجل سليم.",
+                       "\(count) saved history entries could not be read and were skipped. The rest of the history is intact.")
     }
 
     func startMonitoring() {
@@ -120,7 +156,7 @@ final class AppModel: ObservableObject {
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(3)) } catch { return }
                 guard let self else { return }
-                self.refreshTeamActivity()
+                await self.refreshTeamActivity()
                 self.refreshClientLauncher()
                 await self.checkAccountsIfDue()
                 await self.preferencesSync.poll(state: self.state, idle: !self.busy && !self.setup.busy && !self.showOnboarding && !self.checkingAccounts && self.activeWorkCount == 0)
@@ -398,6 +434,7 @@ final class AppModel: ObservableObject {
     private func refreshConsults() throws {
         try consultLog.expireOpen(now: Date())
         consults = try consultLog.recent()
+        consultsRevision += 1
     }
 
     private func respond(
