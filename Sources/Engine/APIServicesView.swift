@@ -37,6 +37,7 @@ struct APIServiceEditor: View {
     @State private var format = APIAssistant.Format.openAI
     @State private var limitText = "100"
     @State private var roundsText = "12"
+    @State private var replyText = String(APIAssistant.defaultOutputTokens)
     @State private var enabled = true
     @State private var hasSavedKey = false
     @State private var working = false
@@ -107,6 +108,11 @@ struct APIServiceEditor: View {
                 Text(text("أقصى جولات للمهمة", "Maximum rounds per task")); Spacer()
                 TextField("12", text: $roundsText).textFieldStyle(.roundedBorder).frame(width: 90).accessibilityLabel(text("أقصى جولات للمهمة", "Maximum task rounds"))
             }
+            HStack {
+                Text(text("حد الرد في كل جولة (tokens)", "Reply limit per round (tokens)")); Spacer()
+                TextField(String(APIAssistant.defaultOutputTokens), text: $replyText).textFieldStyle(.roundedBorder).frame(width: 90).accessibilityLabel(text("حد الرد في كل جولة", "Reply limit per round"))
+            }
+            Text(text("زوّده بس لو الموديل بيسمح برد أطول؛ لو أكبر من حد الموديل، الخدمة هترفض الطلب.", "Raise it only if the model allows longer replies; above the model's own limit, the service rejects the request.")).font(.caption).foregroundStyle(.secondary)
             Toggle(text("فعّل المساعد", "Enable assistant"), isOn: $enabled)
             Text(text("الحفظ والاختبار هيبعتوا طلبًا نصيًا قصيرًا للرابط ده ويُحسبوا من حسابك. عند تعيين المساعد لشغل مشروع، السياق والملفات المصرّح بها تتبعت للخدمة. حد الطلبات محلي، مش حد مصاريف بالدولار. السيرفر المحلي ممكن يستخدم موديلات سحابية حسب إعداداته.", "Save & test sends a short text request to this endpoint using your account. Assigned project work sends authorized context and files to the service. The request cap is local, not a dollar spending limit. A local server may use cloud models depending on its configuration.")).font(.caption).foregroundStyle(.secondary)
             if let issue { Text(issue).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
@@ -133,6 +139,7 @@ struct APIServiceEditor: View {
                 let profile = saved ?? .preset(agent)
                 endpoint = profile.endpoint.absoluteString; model = profile.model; format = profile.format
                 limitText = String(profile.dailyRequestLimit); roundsText = String(profile.maxRounds); enabled = profile.enabled
+                replyText = String(profile.maxOutputTokens ?? APIAssistant.defaultOutputTokens)
                 hasSavedKey = APIAssistantKeychain.contains(profile)
                 if agent == .openrouter { loadModels() }
             } catch { issue = error.localizedDescription }
@@ -142,11 +149,13 @@ struct APIServiceEditor: View {
         .environment(\.layoutDirection, arabic ? .rightToLeft : .leftToRight)
     }
     private func profile(modelOverride: String? = nil) throws -> APIAssistant {
-        guard let limit = integer(limitText), (1...10000).contains(limit), let rounds = integer(roundsText), (1...32).contains(rounds) else {
-            throw FawalyError.invalid(text("حد الطلبات اليومي من ١ إلى ١٠٠٠٠، والجولات من ١ إلى ٣٢.", "Choose a daily cap from 1 to 10000 and a round limit from 1 to 32."))
+        guard let limit = integer(limitText), (1...10000).contains(limit), let rounds = integer(roundsText), (1...32).contains(rounds),
+              let reply = integer(replyText), APIAssistant.outputTokenRange.contains(reply) else {
+            throw FawalyError.invalid(text("حد الطلبات اليومي من ١ إلى ١٠٠٠٠، والجولات من ١ إلى ٣٢، وحد الرد من ١٠٢٤ إلى ٦٥٥٣٦.", "Choose a daily cap from 1 to 10000, a round limit from 1 to 32 and a reply limit from 1024 to 65536."))
         }
         guard let url = URL(string: endpoint.trimmingCharacters(in: .whitespacesAndNewlines)) else { throw FawalyError.invalid("Enter a service URL.") }
-        let profile = APIAssistant(agent: agent, endpoint: url, model: modelOverride ?? model.trimmingCharacters(in: .whitespacesAndNewlines), format: format, enabled: enabled, dailyRequestLimit: limit, maxRounds: rounds)
+        let profile = APIAssistant(agent: agent, endpoint: url, model: modelOverride ?? model.trimmingCharacters(in: .whitespacesAndNewlines), format: format, enabled: enabled, dailyRequestLimit: limit, maxRounds: rounds,
+                                   maxOutputTokens: reply == APIAssistant.defaultOutputTokens ? nil : reply)
         try profile.validate(); return profile
     }
     private func integer(_ input: String) -> Int? {
