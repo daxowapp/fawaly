@@ -1,0 +1,18 @@
+[package]
+name = "fawaly-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "sudo-interns-engine"
+path = "src/main.rs"
+
+[dependencies]
+fawaly-core = { path = "../fawaly-core" }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

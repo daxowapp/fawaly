@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = ["crates/fawaly-core", "crates/fawaly-engine", "app/src-tauri"]
+default-members = ["crates/fawaly-core", "crates/fawaly-engine"]
+
+[workspace.package]
+version = "0.7.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/daxowapp/fawaly"
+rust-version = "1.89"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = "s"
+panic = "abort"
+strip = true

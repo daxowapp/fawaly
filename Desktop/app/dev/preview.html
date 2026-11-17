@@ -1,0 +1,37 @@
+<!doctype html>
+<!-- Local design preview with stubbed data. Not packaged. Use ?ar, ?home, ?step=N, ?dark. -->
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sudo Interns preview</title>
+    <link rel="stylesheet" href="../ui/style.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="toast" role="status"></div>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const previewHome = params.has("home");
+      const svc = (agent, label, native, billing, ready, extra) => ({ agent, label, native, primaryCapable: ["codex", "claude"].includes(agent), billing, installed: native, ready, working: false, configured: !native && ready, enabled: true, local: false, endpoint: "https://openrouter.ai/api/v1/chat/completions", model: "", dailyRequestLimit: 100, usage: { requests: 3, input: 900, output: 120 }, ...extra });
+      const data = {
+        state: { arabic: params.has("ar"), advisors: { mode: "important", maxRounds: 3, timeoutMinutes: 2, seats: [] }, onboardingVersion: previewHome ? 1 : null, team: previewHome ? { primary: "claude", advisor: "codex", workers: ["kimi", "openrouter"] } : null, projectDirectory: "C:\\Users\\Mona\\code\\demo", workerModels: {}, delegationPolicy: null, appearance: params.has("dark") ? "dark" : "light", allowPaidFallback: false, allowUnconfinedWindowsKimi: false, allowUnconfinedLinuxWorkers: false },
+        services: [svc("codex", "Codex", true, "subscription", true), svc("claude", "Claude Code", true, "subscription", false), svc("kimi", "Kimi", true, "subscription", true), svc("zai", "Z.AI (GLM)", false, "provider_account", false), svc("minimax", "MiniMax", false, "provider_account", false), svc("deepseek", "DeepSeek", false, "provider_account", false), svc("openrouter", "OpenRouter", false, "provider_account", true, { model: "nvidia/nemotron-3.5-lightning:free" }), svc("anthropicAPI", "Anthropic-compatible API", false, "provider_account", false), svc("openAIAPI", "OpenAI-compatible API", false, "provider_account", false), svc("ollama", "Ollama", false, "local_endpoint", false, { local: true }), svc("lmstudio", "LM Studio", false, "local_endpoint", false, { local: true })],
+        platform: { os: "windows", arch: "x86_64" },
+        capabilities: [{ id: "api_workers", level: "supported", en: "API and local assistants can only reach the approved project through the app's file tools.", ar: "المساعدين عبر API بيوصلوا للمشروع المسموح من أدوات ملفات التطبيق بس." }, { id: "native_workers", level: "limited", en: "Windows does not let this app enforce a folder boundary on Codex or Claude Code.", ar: "ويندوز مش بيسمح للتطبيق يفرض حدود فولدر على Codex أو Claude Code." }, { id: "kimi_project", level: "unavailable", en: "Kimi cannot edit projects on Windows by default.", ar: "Kimi مش بيعدّل مشاريع على ويندوز افتراضيًا." }],
+        workspaces: ["C:\\Users\\Mona\\code\\demo"],
+        version: "0.7.0",
+      };
+      const job = { id: "1", worker: "kimi", title: "Update the greeting", status: "reviewed", confinement: "tool_level", result: "Changed greeting.txt", gitChanges: [], reviews: [{ primary: "claude", summary: "Greeting updated", verification: "Read the file and ran the tests", score: 5 }] };
+      const skills = [{ id: "planning", name: "Planning with Files", nameAR: "التخطيط بالملفات", description: "Persistent planning on disk.", descriptionAR: "تخطيط محفوظ على القرص.", author: "OthmanAdi", license: "MIT", stars: 12300, checked: "2026-11-01", hasScripts: true, hasHooks: true, status: "installed", sourceUrl: "https://github.com/x/y" }, { id: "debug", name: "Systematic Debugging", nameAR: "تتبّع الأخطاء", description: "Find the root cause before fixing.", descriptionAR: "دوّر على السبب قبل الإصلاح.", author: "obra", license: "MIT", stars: 5100, checked: "2026-11-01", hasScripts: false, hasHooks: false, status: "absent", sourceUrl: "https://github.com/x/z" }];
+      const replies = { bootstrap: data, activity: { jobs: [job], consults: [] }, connection_status: { linked: true, primary: "claude" }, skills_list: skills, daily_load: { snapshot: { articles: [{ sourceId: "github", title: "Copilot agents get a new review mode", url: "https://github.blog/a", published: "2026-11-08T10:00:00Z", topic: "agents" }], failures: [] }, reading: { saved: [], read: [] }, sources: { github: "GitHub Changelog" } } };
+      window.__TAURI__ = { core: { invoke: async (name) => replies[name] }, event: { listen: async () => {} } };
+    </script>
+    <script src="../ui/app.js"></script>
+    <script>
+      setTimeout(() => {
+        if (params.has("page")) goto(params.get("page"));
+        if (params.has("step")) { ui.draft = { primary: "codex", advisor: "claude", workers: ["kimi", "openrouter"] }; ui.step = Number(params.get("step")); render(); }
+      }, 50);
+    </script>
+  </body>
+</html>

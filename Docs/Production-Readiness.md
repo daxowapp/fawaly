@@ -2,7 +2,9 @@
 
 ## Release decision
 
-**Notarized release candidate verified on the current Mac. Public launch is pending.** Apple issued a Developer ID Application identity and accepted the universal build 29 archive submitted using Xcode. The exported app and the copy extracted from the download ZIP pass strict signature, stapled ticket and Gatekeeper checks. The extracted app was moved into Applications with Finder, opened there and retained the existing workshop and saved account statuses. The installer ZIP and signed update feed are prepared locally. The public release, download website and live update feed have not been changed; clean-machine installation and a version-to-version update still need acceptance.
+**Update: version 0.7.1 (build 30) is published as a public preview, with a signed update feed. A clean-Mac install and a real signed upgrade have not been verified yet. The rest of this report describes build 29.**
+
+**Notarized release candidate verified on the current Mac.** Apple issued a Developer ID Application identity and accepted the universal build 29 archive submitted using Xcode. The exported app and the copy extracted from the download ZIP pass strict signature, stapled ticket and Gatekeeper checks. The extracted app was moved into Applications with Finder, opened there and retained the existing workshop and saved account statuses. The installer ZIP and signed update feed were prepared locally for this build.
 
 ## Changes made during this audit
 

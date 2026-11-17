@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The workshop window. Links open only through the app's own allowlisted command.",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:window:allow-set-title", "dialog:allow-open"]
+}
