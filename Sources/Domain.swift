@@ -82,6 +82,23 @@ struct WorkLog {
         sqlite3_busy_timeout(handle, 3_000)
         return try action(handle)
     }
+
+    /// Identity, size and modification time of the database file. Every commit
+    /// rewrites part of the file, so an equal value before and after a read
+    /// means nothing was committed in between.
+    var signature: WorkLogSignature? {
+        var info = stat()
+        guard stat(root.appendingPathComponent("worklog.sqlite").path, &info) == 0 else { return nil }
+        return WorkLogSignature(file: UInt64(info.st_ino), size: Int64(info.st_size),
+                                seconds: Int(info.st_mtimespec.tv_sec), nanoseconds: Int(info.st_mtimespec.tv_nsec))
+    }
+}
+
+struct WorkLogSignature: Equatable, Sendable {
+    let file: UInt64
+    let size: Int64
+    let seconds: Int
+    let nanoseconds: Int
 }
 
 struct WorkItem: Codable, Identifiable, Equatable, Sendable {

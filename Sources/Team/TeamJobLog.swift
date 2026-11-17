@@ -59,23 +59,30 @@ struct TeamJobLog: Sendable {
         }
     }
 
-    func recent(limit: Int? = 50) throws -> [TeamJob] {
+    func recent(limit: Int? = 50) throws -> [TeamJob] { try load(limit: limit).jobs }
+
+    /// A row this version cannot decode (damaged, or written by a newer
+    /// version) is skipped and counted, so it cannot hide the rest of the
+    /// history. The limit counts readable jobs, newest first.
+    func load(limit: Int? = 50) throws -> (jobs: [TeamJob], unreadable: Int) {
         try database { handle in
             var statement: OpaquePointer?
-            let query = "SELECT payload FROM team_jobs ORDER BY started DESC" + (limit.map { " LIMIT \(max(1, $0))" } ?? "")
-            guard sqlite3_prepare_v2(handle, query, -1, &statement, nil) == SQLITE_OK,
+            guard sqlite3_prepare_v2(handle, "SELECT payload FROM team_jobs ORDER BY started DESC", -1, &statement, nil) == SQLITE_OK,
                   let statement else { throw failure }
             defer { sqlite3_finalize(statement) }
-            var records: [TeamJob] = []
+            let wanted = limit.map { max(1, $0) }
+            var records: [TeamJob] = [], unreadable = 0
             var result = sqlite3_step(statement)
             while result == SQLITE_ROW {
-                guard let bytes = sqlite3_column_blob(statement, 0) else { throw failure }
-                let data = Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, 0)))
-                records.append(try JSONDecoder().decode(TeamJob.self, from: data))
+                if let wanted, records.count >= wanted { return (records, unreadable) }
+                if let bytes = sqlite3_column_blob(statement, 0),
+                   let job = try? JSONDecoder().decode(TeamJob.self, from: Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, 0)))) {
+                    records.append(job)
+                } else { unreadable += 1 }
                 result = sqlite3_step(statement)
             }
             guard result == SQLITE_DONE else { throw failure }
-            return records
+            return (records, unreadable)
         }
     }
 
@@ -128,4 +135,41 @@ struct TeamJobLog: Sendable {
     }
 
     private var failure: FawalyError { .invalid("Team activity could not be saved or loaded.") }
+}
+
+/// What the workshop window shows about team work. It is read away from the
+/// main thread, because the history grows without bound and the window asks
+/// for it every few seconds.
+struct TeamActivitySnapshot: Sendable {
+    struct Logs: Sendable {
+        let jobs: [TeamJob]
+        let consults: [ConsultRecord]
+        let unreadable: Int
+        /// Set only when the work log did not change while it was being read.
+        let signature: WorkLogSignature?
+    }
+    /// Nil when the work log is unchanged since `known`, or could not be read.
+    var logs: Logs?
+    var activeComparisons = 0
+    var failure: String?
+
+    static func read(root: URL, known: WorkLogSignature?) -> TeamActivitySnapshot {
+        var snapshot = TeamActivitySnapshot()
+        snapshot.activeComparisons = (try? ComparisonStore(root: root).recent().filter {
+            $0.runs.contains { ["running", "waiting"].contains($0.status) }
+        }.count) ?? 0
+        let before = WorkLog(root: root).signature
+        if let known, before == known { return snapshot }
+        do {
+            let jobs = try TeamJobLog(root: root).load(limit: nil)
+            let consults = try ConsultLog(root: root).load()
+            // The two reads use separate connections. A commit between them, or
+            // between the first check and the reads, changes the file, so the
+            // signature is kept only when it is the same before and after.
+            let after = WorkLog(root: root).signature
+            snapshot.logs = Logs(jobs: jobs.jobs, consults: consults.records, unreadable: jobs.unreadable + consults.unreadable,
+                                 signature: before == after ? after : nil)
+        } catch { snapshot.failure = error.localizedDescription }
+        return snapshot
+    }
 }
